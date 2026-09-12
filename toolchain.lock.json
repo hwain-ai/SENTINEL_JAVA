@@ -1,5 +1,34 @@
 {
   "repository": "SENTINEL_JAVA",
-  "status": "bootstrap-pending",
-  "toolchains": {}
+  "status": "locked",
+  "toolchains": {
+    "java": {
+      "vendor": "Eclipse Temurin",
+      "version": "17.0.20.1+1",
+      "platform": "linux-x64",
+      "archiveUrl": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz",
+      "archiveSize": 193252603,
+      "archiveSha256": "3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e",
+      "archiveRoot": "jdk-17.0.20.1+1",
+      "installDirectory": "jdk-17.0.20.1+1",
+      "binarySha256": "f5aed21d3a0b0f4b05d3a3f9fe71263916d5bc0d47b53aa52a3340b90f0b4805",
+      "installedTreeSha256": "b710d393d67a6f21f0e6ae3b6564f800fa998c0041f2c216b22fa9be4cc3a657",
+      "versionOutput": "openjdk version \"17.0.20.1\" 2026-08-18",
+      "status": "locked"
+    },
+    "maven": {
+      "version": "3.9.16",
+      "platform": "linux",
+      "archiveUrl": "https://dlcdn.apache.org/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz",
+      "archiveSize": 9278065,
+      "archiveSha256": "80ffca22aed9e8b9713a232f3394fd81d7f20322df75efdb2b047dbd3e3a23bb",
+      "archiveSha512": "831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6",
+      "archiveRoot": "apache-maven-3.9.16",
+      "installDirectory": "apache-maven-3.9.16",
+      "binarySha256": "f9381d0cb98abaaf9592dae421eddc497e84ed9bfb723b84c111d1350863c3a2",
+      "installedTreeSha256": "c0490b5bf59cd820e55405ab655a71260b15cbc85e94b81b622a10e057c3a5c3",
+      "versionOutput": "Apache Maven 3.9.16 (2bdd9fddda4b155ebf8000e807eb73fd829a51d5)",
+      "status": "locked"
+    }
+  }
 }

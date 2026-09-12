@@ -1,1 +1,4 @@
 .toolchain/
+target/
+__pycache__/
+*.pyc

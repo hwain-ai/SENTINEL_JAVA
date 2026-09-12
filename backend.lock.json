@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "sentinel-java-backend-lock-v1",
+  "repository": "SENTINEL_JAVA",
+  "artifacts": {
+    "jacoco-agent": {
+      "version": "0.8.12",
+      "url": "https://repo1.maven.org/maven2/org/jacoco/org.jacoco.agent/0.8.12/org.jacoco.agent-0.8.12-runtime.jar",
+      "size": 302428,
+      "sha256": "115e8e6e6593ca3a9892dfef695df4d487c706e59e71e64dc0ab95716ee02622",
+      "fileName": "org.jacoco.agent-0.8.12-runtime.jar"
+    },
+    "jacoco-cli": {
+      "version": "0.8.12",
+      "url": "https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.12/org.jacoco.cli-0.8.12-nodeps.jar",
+      "size": 586283,
+      "sha256": "594c01125b84864a7fc5a9efab19b71b7de36b27346863f6d7cd0cd45400ceb0",
+      "fileName": "org.jacoco.cli-0.8.12-nodeps.jar"
+    }
+  },
+  "mutationBackend": {
+    "name": "mutate4java",
+    "repositoryUrl": "https://github.com/unclebob/mutate4java.git",
+    "commit": "7b05fdd71e8fe36327aff837806dfbff86af0572",
+    "gitArchiveSha256": "762c4b91ef592fbd07dace1189626013b3935c0fa41407242c52ebb1ffdeb34f",
+    "status": "runtime-locked",
+    "sourceArchive": {
+      "url": "https://codeload.github.com/unclebob/mutate4java/tar.gz/7b05fdd71e8fe36327aff837806dfbff86af0572",
+      "size": 95493,
+      "sha256": "a866214305d5fff9b5c19ed9421cc1aed33f770a760b04c7e9a2cecc0f2248fd",
+      "fileName": "mutate4java-7b05fdd-source.tar.gz"
+    },
+    "runtime": {
+      "fileName": "mutate4java-7b05fdd.jar",
+      "size": 116320,
+      "sha256": "117ef17d0dfe32e50f0449a652b83c92a377858cdcdd9c1d191a8d4a69d70ad3",
+      "mainClass": "mutate4java.cli.Main",
+      "sourceFileCount": 96,
+      "classFileCount": 104,
+      "buildJdk": "17.0.20.1+1"
+    }
+  }
+}
