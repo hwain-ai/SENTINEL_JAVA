@@ -10,6 +10,8 @@ CLI 진입점은 두 개입니다. `SelfCrapMain`은 JaCoCo XML로 CRAP 판정�
 
 기준값은 `SelfCrapMain`의 선행 인자 `--crap-max`(CRAP 상한, 기본 8)와 `MutationCommandMain`의 `--mutation-min`(변이 최소 kill 비율 %, 기본 100)으로 넘깁니다. 정수 또는 소수점 두 자리까지의 문자열이며 `GateThreshold`가 정확한 분수로 읽어 비교합니다. 증거 계약의 crap·mutation 구성요소도 crapMax·mutationMin을 필수로 담습니다.
 
+변경분만 검사하려면 `SelfCrapMain`에 선행 인자 `--only 경로`(반복)를, `MutationCommandMain`에 `--changed-file 경로`(반복)를 넘깁니다. CRAP은 전체 소스를 분석하되 지정한 파일의 callable만 판정하고, 변이는 지정한 생산 소스만 대상으로 합니다(inventory 밖 경로는 거부). 어댑터는 통합 요청의 changedFiles를 생산 소스와 교차해 넘기며, 교차분이 비면 판정할 대상이 없으므로 아무 검사도 돌리지 않고 통과로 응답합니다.
+
 검사 대상 프로젝트의 Maven 의존성은 이 검사기의 잠긴 `.toolchain/m2`에서만 오프라인으로 해석되므로, 거기 없는 의존성을 쓰는 프로젝트는 아직 검사할 수 없습니다.
 
 ## 핵심 규칙

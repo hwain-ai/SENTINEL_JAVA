@@ -7,7 +7,9 @@ import io.github.hwainhwang.sentinel.mutation.ProjectMutationRequest;
 import io.github.hwainhwang.sentinel.mutation.ProjectMutationRunner;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -25,6 +27,7 @@ public final class MutationCommandMain {
             "--listener",
             "--timeout-millis");
     private static final String MUTATION_MIN = "--mutation-min";
+    private static final String CHANGED_FILE = "--changed-file";
     private static final Pattern SAFE_CODE = Pattern.compile("[a-z][A-Za-z0-9]{0,63}");
 
     private MutationCommandMain() {
@@ -69,8 +72,7 @@ public final class MutationCommandMain {
 
     private static boolean invalidCall(String[] arguments, PrintStream output, PrintStream error) {
         int required = OPTIONS.size() * 2;
-        return arguments == null
-                || (arguments.length != required && arguments.length != required + 2)
+        return arguments == null || arguments.length < required || arguments.length % 2 != 0
                 || output == null || error == null;
     }
 
@@ -89,7 +91,8 @@ public final class MutationCommandMain {
     }
 
     private static ProjectMutationRequest request(String[] arguments) {
-        Map<String, String> values = pairs(arguments);
+        List<String> changed = new ArrayList<>();
+        Map<String, String> values = pairs(arguments, changed);
         String mutationMin = values.remove(MUTATION_MIN);
         if (!values.keySet().equals(OPTIONS)) {
             throw new IllegalArgumentException("usage");
@@ -105,14 +108,19 @@ public final class MutationCommandMain {
                 timeout(values.get("--timeout-millis")),
                 mutationMin == null
                         ? GateThreshold.DEFAULT_MUTATION_MIN
-                        : GateThreshold.mutationMin(mutationMin));
+                        : GateThreshold.mutationMin(mutationMin),
+                changed.isEmpty() ? null : Set.copyOf(changed));
     }
 
-    private static Map<String, String> pairs(String[] arguments) {
+    private static Map<String, String> pairs(String[] arguments, List<String> changed) {
         Map<String, String> values = new HashMap<>();
         for (int index = 0; index < arguments.length; index += 2) {
             String option = arguments[index];
             String value = arguments[index + 1];
+            if (CHANGED_FILE.equals(option)) {
+                changed.add(changedPath(value));
+                continue;
+            }
             boolean known = OPTIONS.contains(option) || MUTATION_MIN.equals(option);
             if (!known || value == null || value.isEmpty()
                     || values.put(option, value) != null) {
@@ -120,6 +128,18 @@ public final class MutationCommandMain {
             }
         }
         return values;
+    }
+
+    private static String changedPath(String value) {
+        if (value == null || value.isEmpty() || value.startsWith("/")) {
+            throw new IllegalArgumentException("changedPathInvalid");
+        }
+        for (String part : value.split("/", -1)) {
+            if (part.isEmpty() || ".".equals(part) || "..".equals(part)) {
+                throw new IllegalArgumentException("changedPathInvalid");
+            }
+        }
+        return value;
     }
 
     private static Path absolute(String value) {

@@ -3,6 +3,7 @@ package io.github.hwainhwang.sentinel.crap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.nio.file.Path;
 
 /** Applies the exact CRAP threshold to every production callable. */
@@ -25,10 +26,29 @@ public final class CrapGate {
             byte[] coverageXml,
             List<Path> dependencyClasspath,
             GateThreshold crapMax) {
+        return evaluate(sources, coverageXml, dependencyClasspath, crapMax, null);
+    }
+
+    /**
+     * Every source is analyzed (semantic analysis needs the whole tree) but only callables whose
+     * module-relative path is in {@code onlyPaths} are judged; {@code null} judges all of them.
+     */
+    public static Result evaluate(
+            Map<String, byte[]> sources,
+            byte[] coverageXml,
+            List<Path> dependencyClasspath,
+            GateThreshold crapMax,
+            Set<String> onlyPaths) {
         List<Models.CallableDefinition> definitions = JavaAnalyzer.analyzeAll(
                 sources, dependencyClasspath);
         JacocoCoverage.Report report = JacocoCoverage.parse(coverageXml);
         List<Models.CallableMetric> metrics = JacocoCoverage.measure(definitions, report, crapMax);
+        if (onlyPaths != null) {
+            metrics = metrics.stream()
+                    .filter(metric -> onlyPaths.contains(
+                            metric.callable().identity().moduleRelativePath()))
+                    .toList();
+        }
         return result(metrics);
     }
 

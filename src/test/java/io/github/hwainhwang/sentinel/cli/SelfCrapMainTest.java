@@ -67,6 +67,19 @@ class SelfCrapMainTest {
         assertTrue(standardOut.toString(StandardCharsets.UTF_8).contains("\"aboveLimit\":1"));
         assertTrue(standardError.toString(StandardCharsets.UTF_8).startsWith("CRAP_ABOVE "));
 
+        int only = SelfCrapMain.run(
+                new String[]{"--only", "src/main/java/Other.java", projectRoot.toString(), "src/main/java", "target/jacoco.xml"},
+                new PrintStream(standardOut, true, StandardCharsets.UTF_8),
+                new PrintStream(new ByteArrayOutputStream()));
+        assertEquals(2, only);
+        assertTrue(standardOut.toString(StandardCharsets.UTF_8).contains("\"total\":0"));
+
+        int kept = SelfCrapMain.run(
+                new String[]{"--only", "src/main/java/Sample.java", "--crap-max", "9", projectRoot.toString(), "src/main/java", "target/jacoco.xml"},
+                new PrintStream(new ByteArrayOutputStream()),
+                new PrintStream(new ByteArrayOutputStream()));
+        assertEquals(0, kept);
+
         int invalid = SelfCrapMain.run(
                 new String[]{"--crap-max", "8.", projectRoot.toString(), "src/main/java", "target/jacoco.xml"},
                 new PrintStream(new ByteArrayOutputStream()),

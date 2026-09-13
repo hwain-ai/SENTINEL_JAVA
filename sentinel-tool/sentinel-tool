@@ -88,7 +88,7 @@ def run(command: list, cwd: Path, env: dict, log) -> int:
         return 5
 
 
-def crap_gate(locks: dict, snapshot: Path, env: dict, log, crap_max) -> int:
+def crap_gate(locks: dict, snapshot: Path, env: dict, log, crap_max, only) -> int:
     java = str(locks["java_home"] / "bin" / "java")
     mvn = str(locks["maven_home"] / "bin" / "mvn")
     agent = f"-javaagent:{locks['agent']}=destfile=target/jacoco.exec,append=false"
@@ -105,11 +105,13 @@ def crap_gate(locks: dict, snapshot: Path, env: dict, log, crap_max) -> int:
     command = [java, "-cp", str(locks["classes"]), f"{CLI_PACKAGE}.SelfCrapMain"]
     if crap_max is not None:
         command += ["--crap-max", str(crap_max)]
+    for path in only or ():
+        command += ["--only", path]
     command += [str(snapshot), "src/main/java", "target/sentinel-jacoco.xml", *classpath]
     return run(command, snapshot, env, log)
 
 
-def mutation_gate(locks: dict, project_root: Path, inventory: Path, env: dict, log, mutation_min) -> int:
+def mutation_gate(locks: dict, project_root: Path, inventory: Path, env: dict, log, mutation_min, targets) -> int:
     java = str(locks["java_home"] / "bin" / "java")
     command = [java, "-cp", str(locks["classes"]), f"{CLI_PACKAGE}.MutationCommandMain",
                "--project", str(project_root), "--inventory", str(inventory),
@@ -118,6 +120,8 @@ def mutation_gate(locks: dict, project_root: Path, inventory: Path, env: dict, l
                "--listener", str(locks["classes"]), "--timeout-millis", MUTATION_TIMEOUT_MILLIS]
     if mutation_min is not None:
         command += ["--mutation-min", str(mutation_min)]
+    for path in targets or ():
+        command += ["--changed-file", path]
     return run(command, project_root, env, log)
 
 
@@ -167,6 +171,13 @@ def main() -> int:
         sources = production_sources(project_root)
         if not sources:
             return finish(3)
+        changed = request.get("changedFiles")
+        targets = None
+        if changed is not None:
+            # Changed mode: only changed production sources are judged; none means nothing to judge.
+            targets = sorted(set(sources) & {str(path) for path in changed})
+            if not targets:
+                return finish(0)
         inventory = work / "production.inventory"
         inventory.write_text("sentinel-java-production-v1\n" + "".join(f"{s}\n" for s in sources), encoding="utf-8")
         snapshot = work / "snapshot"
@@ -175,8 +186,8 @@ def main() -> int:
         home_directory.mkdir(mode=0o700)
         env = environment(locks, home_directory)
         with open(work / "checker.log", "wb") as log:
-            crap_exit = crap_gate(locks, snapshot, env, log, gate.get("crapMax"))
-            mutation_exit = mutation_gate(locks, project_root, inventory, env, log, gate.get("mutationMin"))
+            crap_exit = crap_gate(locks, snapshot, env, log, gate.get("crapMax"), targets)
+            mutation_exit = mutation_gate(locks, project_root, inventory, env, log, gate.get("mutationMin"), targets)
     return finish(combined(crap_exit, mutation_exit))
 
 

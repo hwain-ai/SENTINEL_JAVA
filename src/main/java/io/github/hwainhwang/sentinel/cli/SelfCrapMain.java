@@ -14,21 +14,50 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Runs a project's production CRAP gate against a fresh JaCoCo XML report.
  *
- * <p>Usage: {@code [--crap-max TEXT] ROOT SOURCE_ROOT COVERAGE_XML [CLASSPATH...]}.
+ * <p>Usage: {@code [--crap-max TEXT] [--only PATH]... ROOT SOURCE_ROOT COVERAGE_XML [CLASSPATH...]}.
+ * {@code --only} restricts the judged callables to the named project-relative source paths.
  */
 public final class SelfCrapMain {
-    private record Invocation(GateThreshold crapMax, String[] positional) {
+    private record Invocation(GateThreshold crapMax, Set<String> only, String[] positional) {
         static Invocation parse(String[] arguments) {
-            if (arguments.length >= 2 && "--crap-max".equals(arguments[0])) {
-                return new Invocation(
-                        GateThreshold.crapMax(arguments[1]),
-                        Arrays.copyOfRange(arguments, 2, arguments.length));
+            GateThreshold crapMax = GateThreshold.DEFAULT_CRAP_MAX;
+            Set<String> only = null;
+            int index = 0;
+            while (index + 1 < arguments.length && arguments[index].startsWith("--")) {
+                if ("--crap-max".equals(arguments[index])) {
+                    crapMax = GateThreshold.crapMax(arguments[index + 1]);
+                } else if ("--only".equals(arguments[index])) {
+                    if (only == null) {
+                        only = new TreeSet<>();
+                    }
+                    only.add(onlyPath(arguments[index + 1]));
+                } else {
+                    throw new IllegalArgumentException("usage");
+                }
+                index += 2;
             }
-            return new Invocation(GateThreshold.DEFAULT_CRAP_MAX, arguments);
+            return new Invocation(
+                    crapMax,
+                    only == null ? null : Set.copyOf(only),
+                    Arrays.copyOfRange(arguments, index, arguments.length));
+        }
+
+        private static String onlyPath(String value) {
+            if (value.isEmpty() || value.startsWith("/")) {
+                throw new IllegalArgumentException("changedPathInvalid");
+            }
+            for (String part : value.split("/", -1)) {
+                if (part.isEmpty() || ".".equals(part) || "..".equals(part)) {
+                    throw new IllegalArgumentException("changedPathInvalid");
+                }
+            }
+            return value;
         }
     }
 
@@ -62,7 +91,8 @@ public final class SelfCrapMain {
                     sources(root, sourceRoot),
                     read(coverage),
                     classpath(root, positional),
-                    invocation.crapMax());
+                    invocation.crapMax(),
+                    invocation.only());
             out.println(summary(result, invocation.crapMax()));
             printFailures(result.rows(), error, invocation.crapMax());
             return result.passed() ? 0 : 2;

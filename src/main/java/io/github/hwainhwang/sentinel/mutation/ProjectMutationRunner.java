@@ -19,10 +19,11 @@ public final class ProjectMutationRunner {
         }
         List<ProductionSource> sources = ProductionInventory.load(
                 request.projectRoot(), request.inventoryFile());
+        List<ProductionSource> targets = targets(sources, request.targets());
         Path events = eventDirectory();
         try (Mutate4JavaAdapter backend = new Mutate4JavaAdapter(request.backendJar())) {
             TypedMavenRunner tests = new TypedMavenRunner(request, events);
-            List<MutationRecord> records = execute(request, sources, backend, tests);
+            List<MutationRecord> records = execute(request, sources, targets, backend, tests);
             return new MutationRun(records, MutationGate.component(records, request.mutationMin()));
         } finally {
             deleteEventDirectory(events);
@@ -30,13 +31,35 @@ public final class ProjectMutationRunner {
         }
     }
 
+    private static List<ProductionSource> targets(
+            List<ProductionSource> sources, Set<String> requested) {
+        if (requested == null) {
+            return sources;
+        }
+        Set<String> inventoried = new HashSet<>();
+        for (ProductionSource source : sources) {
+            inventoried.add(source.relativePath());
+        }
+        if (requested.isEmpty() || !inventoried.containsAll(requested)) {
+            throw new IllegalArgumentException("mutationTargetInvalid");
+        }
+        List<ProductionSource> selected = new ArrayList<>();
+        for (ProductionSource source : sources) {
+            if (requested.contains(source.relativePath())) {
+                selected.add(source);
+            }
+        }
+        return List.copyOf(selected);
+    }
+
     private static List<MutationRecord> execute(
             ProjectMutationRequest request,
             List<ProductionSource> sources,
+            List<ProductionSource> targets,
             Mutate4JavaAdapter backend,
             TypedMavenRunner tests) throws Exception {
         List<MutationRecord> records = new ArrayList<>();
-        for (ProductionSource source : sources) {
+        for (ProductionSource source : targets) {
             List<MutationCandidate> candidates = scan(
                     request.projectRoot(), sources, source, backend);
             if (!candidates.isEmpty()) {

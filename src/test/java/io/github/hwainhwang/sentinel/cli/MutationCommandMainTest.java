@@ -47,6 +47,43 @@ class MutationCommandMainTest {
     }
 
     @Test
+    void passesChangedFilesAsMutationTargetsAndRejectsEscapingPaths() {
+        String[] values = arguments();
+        String[] withTargets = java.util.Arrays.copyOf(values, values.length + 4);
+        withTargets[values.length] = "--changed-file";
+        withTargets[values.length + 1] = "src/main/java/demo/Flag.java";
+        withTargets[values.length + 2] = "--changed-file";
+        withTargets[values.length + 3] = "src/main/java/demo/Other.java";
+        java.util.concurrent.atomic.AtomicReference<java.util.Set<String>> seen = new java.util.concurrent.atomic.AtomicReference<>();
+
+        int exit = MutationCommandMain.run(
+                withTargets,
+                new PrintStream(new ByteArrayOutputStream()),
+                new PrintStream(new ByteArrayOutputStream()),
+                request -> {
+                    seen.set(request.targets());
+                    return new MutationRun(List.of(), MutationGate.component(List.of()));
+                });
+
+        assertEquals(2, exit);
+        assertEquals(java.util.Set.of("src/main/java/demo/Flag.java", "src/main/java/demo/Other.java"), seen.get());
+
+        String[] escaping = java.util.Arrays.copyOf(values, values.length + 2);
+        escaping[values.length] = "--changed-file";
+        escaping[values.length + 1] = "../outside/Flag.java";
+        ByteArrayOutputStream error = new ByteArrayOutputStream();
+        int rejected = MutationCommandMain.run(
+                escaping,
+                new PrintStream(new ByteArrayOutputStream()),
+                new PrintStream(error, true, StandardCharsets.UTF_8),
+                request -> {
+                    throw new AssertionError("backend must not run");
+                });
+        assertEquals(4, rejected);
+        assertTrue(error.toString(StandardCharsets.UTF_8).contains("changedPathInvalid"));
+    }
+
+    @Test
     void rejectsMissingOrUnknownOptionsBeforeRunningTheBackend() {
         ByteArrayOutputStream error = new ByteArrayOutputStream();
 

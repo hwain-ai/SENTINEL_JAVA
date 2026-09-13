@@ -3,6 +3,7 @@ package io.github.hwainhwang.sentinel.mutation;
 import io.github.hwainhwang.sentinel.crap.GateThreshold;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.Set;
 
 /** Explicit filesystem and toolchain inputs for one harness-neutral mutation run. */
 public record ProjectMutationRequest(
@@ -14,7 +15,23 @@ public record ProjectMutationRequest(
         Path mavenRepository,
         Path listenerPath,
         long timeoutMillis,
-        GateThreshold mutationMin) {
+        GateThreshold mutationMin,
+        Set<String> targets) {
+    /** {@code targets} names the inventory paths to mutate; {@code null} mutates all of them. */
+    public ProjectMutationRequest(
+            Path projectRoot,
+            Path inventoryFile,
+            Path backendJar,
+            Path javaHome,
+            Path mavenHome,
+            Path mavenRepository,
+            Path listenerPath,
+            long timeoutMillis,
+            GateThreshold mutationMin) {
+        this(projectRoot, inventoryFile, backendJar, javaHome, mavenHome, mavenRepository,
+                listenerPath, timeoutMillis, mutationMin, null);
+    }
+
     public ProjectMutationRequest(
             Path projectRoot,
             Path inventoryFile,
@@ -37,6 +54,7 @@ public record ProjectMutationRequest(
         mavenRepository = Objects.requireNonNull(mavenRepository, "mavenRepository");
         listenerPath = Objects.requireNonNull(listenerPath, "listenerPath");
         mutationMin = Objects.requireNonNull(mutationMin, "mutationMin");
+        targets = targets == null ? null : Set.copyOf(targets);
         if (timeoutMillis < 1_000L || timeoutMillis > 3_600_000L) {
             throw new IllegalArgumentException("mutationTimeoutInvalid");
         }

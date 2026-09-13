@@ -2,6 +2,7 @@
 
 ## 2026-09-13
 
+- **Update** SelfCrapMain·MutationCommandMain·ProjectMutationRunner: 변경분 검사용 `--only`와 `--changed-file`(반복)을 추가해 판정·변이 대상을 지정한 생산 소스로 좁힌다. 어댑터는 changedFiles와 생산 소스의 교차분을 넘기고, 비면 검사 없이 통과로 응답한다.
 - **Creation** GateThreshold.java·sentinel-tool/: CRAP 상한(`--crap-max`, 기본 8)과 변이 최소 kill 비율(`--mutation-min`, 기본 100)을 명령에서 받아 ExactCrap·MutationGate 판정에 쓰고, 통합 SENTINEL의 도구 요청을 받아 Maven+JaCoCo coverage, CRAP 판정, 변이 판정을 이어 돌리는 어댑터와 첫 실행 준비 스크립트를 추가했다. 기준값 문자열 계약은 SENTINEL_SPEC threshold-v1.json과 같고 vendored golden에 복사했다.
 - **Update** EvidenceContract.java: crap 구성요소에 crapMax, mutation 구성요소에 mutationMin을 필수로 두고 의미 검사도 그 값으로 재계산한다. SPEC golden 지문 세 사례를 새 값으로 맞췄다. SelfCrapMain은 절대 경로 classpath 항목을 허용해 검사기의 잠긴 jar를 대상 프로젝트 밖에서 지정할 수 있다.
 
