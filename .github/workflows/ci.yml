@@ -1,0 +1,29 @@
+# Java 검사기 자체 시험. bootstrap 스크립트가 잠금 파일의 주소·지문으로 JDK·Maven·변이 도구·PIT 시험 입력을 받고,
+# bootstrap-m2.sh 가 검사기 자체 빌드의 Maven 의존성을 한 번 온라인으로 받아 이후 오프라인 실행에 쓴다.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore the sealed toolchain
+        uses: actions/cache@v4
+        with:
+          path: .toolchain
+          key: java-toolchain-${{ runner.os }}-${{ hashFiles('toolchain.lock.json', 'backend.lock.json', 'pom.xml', 'src/main/resources/pit-probe-artifacts.tsv') }}
+      - name: Bootstrap the JDK, Maven, mutation backend and PIT probe inputs
+        run: |
+          scripts/bootstrap-toolchain.sh
+          scripts/bootstrap-backends.sh
+          scripts/bootstrap-pit-probe.sh
+          scripts/bootstrap-m2.sh
+      - name: Run the checker's tests offline
+        run: scripts/mvn.sh -o -B -ntp test
