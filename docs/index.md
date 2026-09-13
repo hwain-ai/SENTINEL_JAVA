@@ -18,4 +18,5 @@ Native JDK compiler tree callable inventory, cyclomatic complexity, strict JaCoC
 
 ## 운영 기록
 
+* [상용 변이 도구 후보 검토](sentinel-java-commercial-candidates.md) - Certitude·ArcMutate 등 Java 상용 확장 후보의 공식 자료 확인과 판단
 * [변경 기록](log.md) - 문서 번들의 생성과 변경 내역
