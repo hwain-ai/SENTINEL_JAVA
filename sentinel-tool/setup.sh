@@ -6,6 +6,7 @@ set -euo pipefail
 root="$(cd -- "$(dirname -- "$0")/.." && pwd -P)"
 "$root/scripts/bootstrap-toolchain.sh"
 "$root/scripts/bootstrap-backends.sh"
+"$root/scripts/bootstrap-m2.sh"
 "$root/scripts/mvn.sh" -o -B -ntp -q compile
 "$root/scripts/doctor.sh" >/dev/null
 printf 'sentinel-tool: java checker ready\n' >&2
