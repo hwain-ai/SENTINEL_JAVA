@@ -25,6 +25,9 @@ Linux(x86_64, arm64)와 macOS(Intel, Apple Silicon)를 지원합니다. Windows 
 환경(HOME 은 `.toolchain/home`, PATH 는 잠긴 JDK·Maven 만)에서 돕니다. 변이 백엔드(mutate4java)는 잠긴
 소스에서 그 플랫폼의 JDK 로 다시 컴파일하며 결과 jar 의 지문은 플랫폼과 무관하게 같습니다.
 
+macOS 의 JDK 17 에는 디렉터리 핸들 기준 파일 열기(SecureDirectoryStream)가 없어, JUnit 이벤트 파일은 조상 폴더가
+전부 실제 폴더인지 확인한 직후 배타적으로(CREATE_NEW, 링크 따라가지 않음) 만듭니다. Linux 에서는 핸들 경로를 씁니다.
+
 검사기 자체 품질 점검 스크립트(`scripts/self-crap.sh`, `scripts/self-mutation-slice.sh`,
 `scripts/typed-mvn-test.sh`)는 아직 Linux 전용 bash 입니다. 사용자가 프로젝트를 검사하는 경로에는 쓰이지 않습니다.
 

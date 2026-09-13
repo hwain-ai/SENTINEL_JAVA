@@ -27,8 +27,8 @@ class TypedMavenRunnerTest {
                 project,
                 project.resolve("production.inventory"),
                 toolRoot.resolve(".toolchain/backends/mutate4java-7b05fdd.jar"),
-                toolRoot.resolve(".toolchain/jdk-17.0.20.1+1"),
-                toolRoot.resolve(".toolchain/apache-maven-3.9.16"),
+                LockedToolchain.javaHome(toolRoot),
+                LockedToolchain.mavenHome(toolRoot),
                 toolRoot.resolve(".toolchain/m2"),
                 toolRoot.resolve("target/classes"),
                 120_000L);
@@ -55,8 +55,8 @@ class TypedMavenRunnerTest {
                 project,
                 project.resolve("production.inventory"),
                 toolRoot.resolve(".toolchain/backends/mutate4java-7b05fdd.jar"),
-                toolRoot.resolve(".toolchain/jdk-17.0.20.1+1"),
-                toolRoot.resolve(".toolchain/apache-maven-3.9.16"),
+                LockedToolchain.javaHome(toolRoot),
+                LockedToolchain.mavenHome(toolRoot),
                 toolRoot.resolve(".toolchain/m2"),
                 toolRoot.resolve("target/classes"),
                 120_000L);
