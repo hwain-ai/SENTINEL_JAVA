@@ -8,6 +8,7 @@ src/main/java/io/github/hwainhwang/sentinel/crap/CoverageFormatException.java
 src/main/java/io/github/hwainhwang/sentinel/crap/CrapGate.java
 src/main/java/io/github/hwainhwang/sentinel/crap/CrapRows.java
 src/main/java/io/github/hwainhwang/sentinel/crap/ExactCrap.java
+src/main/java/io/github/hwainhwang/sentinel/crap/GateThreshold.java
 src/main/java/io/github/hwainhwang/sentinel/crap/JacocoCoverage.java
 src/main/java/io/github/hwainhwang/sentinel/crap/JavaAnalysisException.java
 src/main/java/io/github/hwainhwang/sentinel/crap/JavaAnalyzer.java

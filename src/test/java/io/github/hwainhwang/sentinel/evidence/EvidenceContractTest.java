@@ -21,10 +21,10 @@ class EvidenceContractTest {
         Map<String, Object> document = EvidenceContract.validate(payload, PROJECT);
 
         assertEquals(
-                "ab218bbdf80c72b02f93e432a938191612869681803a519f24379ba3b092df6a",
+                "40869448a1bc56bdc0a7c3cd528db367d838f71253733fab45d5e30a216d72ba",
                 HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(payload)));
         assertEquals(
-                "4542679c4ce361bd22a29d30a2f4bfd6149a8e2cbd6ef15984cfa1ff697cae32",
+                "1aaaa38f58a49f6d64bcda9f05037e4432c88766f02a3000f8d9ef520fffc66e",
                 document.get("hmacSha256"));
         assertEquals("1", document.get("commitSequence"));
         assertFalse(document.containsKey("run"));
@@ -35,12 +35,12 @@ class EvidenceContractTest {
     void matchesTheMutationFailureAndLocalCacheSpecGoldens() throws Exception {
         assertGolden(
                 EvidenceFixtures.strictMutationFailureBody(),
-                "7bef1a9e19193ef226bb17fe1845903a6c1ab8a08fbcc15f83756c345055d525",
-                "8e27028edf6247a9117eaf07ddcd1ef5235509fb4ddaa351be0efe63defae6c1");
+                "63556501d29403c3e7ee1d9b8a58720155265f5aae2b0fb45078c93e39fb8939",
+                "0527699d583a32d24e28b30bf4dba11ab6d4ccdec5a33bf22759b528178c4c1e");
         assertGolden(
                 EvidenceFixtures.localCacheCrapBody(),
-                "0c99cd8067d78b957f51b7a9bd338f3d5a95356bd0b984851bc4be17b053c676",
-                "017c622e0c0bd0aba97fa3c1ba6dea3ff00f2a8a66c1b02825939259011e2660");
+                "8756ed2baf7716a6ffb14c769b3229c7266454fcf4124848fd45e2f9d90f0754",
+                "99e00cb7efeaee7e2625a9a6ae93817bc1f4b39f917bd028a2aa6a0963e53163");
     }
 
     @Test

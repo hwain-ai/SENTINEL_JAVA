@@ -1,5 +1,6 @@
 package io.github.hwainhwang.sentinel.evidence;
 
+import io.github.hwainhwang.sentinel.crap.GateThreshold;
 import java.math.BigInteger;
 import java.time.DateTimeException;
 import java.time.LocalDateTime;
@@ -26,14 +27,15 @@ public final class EvidenceContract {
             "schemaVersion", "sourceRunId", "specVersion", "startedAtUtc",
             "startedSha256", "terminalStatus");
     private static final Set<String> CRAP_FIELDS = Set.of(
-            "callableCount", "maxNumerator", "maxDenominator", "pass", "unknownCount");
+            "callableCount", "crapMax", "maxNumerator", "maxDenominator", "pass",
+            "unknownCount");
     private static final List<String> MUTATION_STATES = List.of(
             "killed", "survived", "uncovered", "timedOut", "compileError",
             "runtimeError", "pending", "ignored", "toolError");
     private static final Set<String> MUTATION_FIELDS = Set.of(
             "inScope", "killed", "survived", "uncovered", "timedOut",
             "compileError", "runtimeError", "pending", "ignored", "toolError",
-            "unauthorizedExclusion", "pass");
+            "unauthorizedExclusion", "mutationMin", "pass");
     private static final Set<String> COMMANDS = Set.of("crap", "mutation", "check");
     private static final Set<String> LANGUAGES = Set.of(
             "python", "typescript", "go", "java", "clojure");
@@ -253,8 +255,9 @@ public final class EvidenceContract {
             throw new EvidenceContractException("crapComponentInvalid");
         }
         boolean actual = ContractValues.bool(component.get("pass"), "crapComponentInvalid");
+        GateThreshold crapMax = threshold(component.get("crapMax"), true, "crapComponentInvalid");
         boolean expected = callableCount > 0 && unknown == 0
-                && numerator.compareTo(denominator.multiply(BigInteger.valueOf(8))) <= 0;
+                && crapMax.crapPasses(numerator, denominator);
         if (actual != expected) {
             throw new EvidenceContractException("crapComponentSemanticsInvalid");
         }
@@ -273,7 +276,9 @@ public final class EvidenceContract {
         if (counts.values().stream().mapToLong(Long::longValue).sum() != inScope) {
             throw new EvidenceContractException("mutationComponentInvalid");
         }
-        boolean expected = mutationPasses(counts, inScope, unauthorized);
+        GateThreshold mutationMin = threshold(
+                component.get("mutationMin"), false, "mutationComponentInvalid");
+        boolean expected = mutationPasses(counts, inScope, unauthorized, mutationMin);
         if (actual != expected) {
             throw new EvidenceContractException("mutationComponentSemanticsInvalid");
         }
@@ -289,17 +294,22 @@ public final class EvidenceContract {
         return result;
     }
 
+    /** At the default 100 percent this is exactly killed == inScope with every other state at zero. */
     private static boolean mutationPasses(
-            Map<String, Long> counts, long inScope, long unauthorized) {
-        if (inScope < 1 || counts.get("killed") != inScope || unauthorized != 0) {
-            return false;
+            Map<String, Long> counts, long inScope, long unauthorized, GateThreshold mutationMin) {
+        return inScope >= 1 && unauthorized == 0
+                && mutationMin.killRatePasses(counts.get("killed"), inScope);
+    }
+
+    private static GateThreshold threshold(Object value, boolean crap, String code) {
+        if (!(value instanceof String text)) {
+            throw new EvidenceContractException(code);
         }
-        for (String state : MUTATION_STATES) {
-            if (!"killed".equals(state) && counts.get(state) != 0) {
-                return false;
-            }
+        try {
+            return crap ? GateThreshold.crapMax(text) : GateThreshold.mutationMin(text);
+        } catch (IllegalArgumentException failure) {
+            throw new EvidenceContractException(code);
         }
-        return true;
     }
 
     private static void validateTerminal(Map<String, Object> body, boolean componentsPass) {

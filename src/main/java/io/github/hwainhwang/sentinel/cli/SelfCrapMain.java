@@ -1,22 +1,36 @@
 package io.github.hwainhwang.sentinel.cli;
 
 import io.github.hwainhwang.sentinel.crap.CrapGate;
+import io.github.hwainhwang.sentinel.crap.GateThreshold;
 import io.github.hwainhwang.sentinel.crap.Models;
 import io.github.hwainhwang.sentinel.crap.SemanticSite;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Runs the repository's production CRAP gate against a fresh JaCoCo XML report. */
+/**
+ * Runs a project's production CRAP gate against a fresh JaCoCo XML report.
+ *
+ * <p>Usage: {@code [--crap-max TEXT] ROOT SOURCE_ROOT COVERAGE_XML [CLASSPATH...]}.
+ */
 public final class SelfCrapMain {
-    private static final BigInteger LIMIT = BigInteger.valueOf(8);
+    private record Invocation(GateThreshold crapMax, String[] positional) {
+        static Invocation parse(String[] arguments) {
+            if (arguments.length >= 2 && "--crap-max".equals(arguments[0])) {
+                return new Invocation(
+                        GateThreshold.crapMax(arguments[1]),
+                        Arrays.copyOfRange(arguments, 2, arguments.length));
+            }
+            return new Invocation(GateThreshold.DEFAULT_CRAP_MAX, arguments);
+        }
+    }
 
     private SelfCrapMain() {
         throw new AssertionError("no instances");
@@ -30,18 +44,27 @@ public final class SelfCrapMain {
     }
 
     public static int run(String[] arguments, PrintStream out, PrintStream error) {
-        if (arguments == null || arguments.length < 3 || out == null || error == null) {
+        if (arguments == null || out == null || error == null) {
             error.println("self-crap error: usage");
             return 4;
         }
         try {
-            Path root = projectRoot(arguments[0]);
-            Path sourceRoot = child(root, arguments[1], true);
-            Path coverage = child(root, arguments[2], false);
+            Invocation invocation = Invocation.parse(arguments);
+            String[] positional = invocation.positional();
+            if (positional.length < 3) {
+                error.println("self-crap error: usage");
+                return 4;
+            }
+            Path root = projectRoot(positional[0]);
+            Path sourceRoot = child(root, positional[1], true);
+            Path coverage = child(root, positional[2], false);
             CrapGate.Result result = CrapGate.evaluate(
-                    sources(root, sourceRoot), read(coverage), classpath(root, arguments));
-            out.println(summary(result));
-            printFailures(result.rows(), error);
+                    sources(root, sourceRoot),
+                    read(coverage),
+                    classpath(root, positional),
+                    invocation.crapMax());
+            out.println(summary(result, invocation.crapMax()));
+            printFailures(result.rows(), error, invocation.crapMax());
             return result.passed() ? 0 : 2;
         } catch (IOException | RuntimeException failure) {
             error.println("self-crap error: " + safeMessage(failure));
@@ -110,11 +133,12 @@ public final class SelfCrapMain {
     private static List<Path> classpath(Path root, String[] arguments) {
         List<Path> paths = new ArrayList<>();
         for (int index = 3; index < arguments.length; index++) {
-            Path relative = Path.of(arguments[index]);
-            if (relative.isAbsolute() || !relative.normalize().equals(relative)) {
+            Path entry = Path.of(arguments[index]);
+            if (!entry.normalize().equals(entry)) {
                 throw new IllegalArgumentException("dependencyClasspathInvalid");
             }
-            Path path = root.resolve(relative);
+            // Absolute entries let a caller name the checker's own locked jars outside the project.
+            Path path = entry.isAbsolute() ? entry : root.resolve(entry);
             boolean validType = Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
                     || Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS);
             if (Files.isSymbolicLink(path) || !validType) {
@@ -125,9 +149,10 @@ public final class SelfCrapMain {
         return List.copyOf(paths);
     }
 
-    private static String summary(CrapGate.Result result) {
+    private static String summary(CrapGate.Result result, GateThreshold crapMax) {
         return "{\"schemaVersion\":\"sentinel-java-self-crap-v1\",\"passed\":"
                 + result.passed()
+                + ",\"crapMax\":\"" + crapMax.text() + "\""
                 + ",\"total\":" + result.total()
                 + ",\"known\":" + result.known()
                 + ",\"unknown\":" + result.unknown()
@@ -135,11 +160,12 @@ public final class SelfCrapMain {
                 + "}";
     }
 
-    private static void printFailures(List<Models.CrapRow> rows, PrintStream error) {
+    private static void printFailures(
+            List<Models.CrapRow> rows, PrintStream error, GateThreshold crapMax) {
         for (Models.CrapRow row : rows) {
             if (!row.known()) {
                 error.println("CRAP_UNKNOWN " + row.callableId() + " " + row.unknownReason());
-            } else if (row.numerator().compareTo(row.denominator().multiply(LIMIT)) > 0) {
+            } else if (!crapMax.crapPasses(row.numerator(), row.denominator())) {
                 error.println("CRAP_ABOVE " + row.callableId() + " "
                         + row.numerator() + "/" + row.denominator());
             }

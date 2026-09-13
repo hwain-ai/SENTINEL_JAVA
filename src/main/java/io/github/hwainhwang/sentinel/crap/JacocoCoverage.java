@@ -111,18 +111,23 @@ public final class JacocoCoverage {
 
     public static List<Models.CallableMetric> measure(
             List<Models.CallableDefinition> definitions, Report report) {
-        if (definitions == null || report == null) {
+        return measure(definitions, report, GateThreshold.DEFAULT_CRAP_MAX);
+    }
+
+    public static List<Models.CallableMetric> measure(
+            List<Models.CallableDefinition> definitions, Report report, GateThreshold crapMax) {
+        if (definitions == null || report == null || crapMax == null) {
             throw new IllegalArgumentException("coverageJoinInputMissing");
         }
         List<Models.CallableMetric> metrics = new ArrayList<>(definitions.size());
         for (Models.CallableDefinition definition : definitions) {
-            metrics.add(measureOne(definition, report));
+            metrics.add(measureOne(definition, report, crapMax));
         }
         return List.copyOf(metrics);
     }
 
     private static Models.CallableMetric measureOne(
-            Models.CallableDefinition definition, Report report) {
+            Models.CallableDefinition definition, Report report, GateThreshold crapMax) {
         if (definition == null) {
             throw new IllegalArgumentException("callableMissing");
         }
@@ -143,11 +148,13 @@ public final class JacocoCoverage {
                 definition.jacocoMethodName(),
                 definition.identity().descriptor());
         List<MethodCoverage> matches = report.methods().getOrDefault(key, List.of());
-        return metricFromMatches(definition, matches);
+        return metricFromMatches(definition, matches, crapMax);
     }
 
     private static Models.CallableMetric metricFromMatches(
-            Models.CallableDefinition definition, List<MethodCoverage> matches) {
+            Models.CallableDefinition definition,
+            List<MethodCoverage> matches,
+            GateThreshold crapMax) {
         if (matches.isEmpty()) {
             return Models.CallableMetric.unknown(
                     definition, Models.CoverageUnknownReason.METHOD_MISSING);
@@ -171,7 +178,7 @@ public final class JacocoCoverage {
             return Models.CallableMetric.unknown(
                     definition, Models.CoverageUnknownReason.ZERO_INSTRUCTIONS);
         }
-        return Models.CallableMetric.known(definition, counts.covered(), counts.total());
+        return Models.CallableMetric.known(definition, counts.covered(), counts.total(), crapMax);
     }
 
     private static DocumentBuilderFactory builderFactory() throws ParserConfigurationException {

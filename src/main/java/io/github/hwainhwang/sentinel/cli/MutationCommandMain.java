@@ -1,5 +1,6 @@
 package io.github.hwainhwang.sentinel.cli;
 
+import io.github.hwainhwang.sentinel.crap.GateThreshold;
 import io.github.hwainhwang.sentinel.evidence.CanonicalJson;
 import io.github.hwainhwang.sentinel.mutation.MutationRun;
 import io.github.hwainhwang.sentinel.mutation.ProjectMutationRequest;
@@ -23,6 +24,7 @@ public final class MutationCommandMain {
             "--maven-repository",
             "--listener",
             "--timeout-millis");
+    private static final String MUTATION_MIN = "--mutation-min";
     private static final Pattern SAFE_CODE = Pattern.compile("[a-z][A-Za-z0-9]{0,63}");
 
     private MutationCommandMain() {
@@ -37,7 +39,7 @@ public final class MutationCommandMain {
     }
 
     public static int run(String[] arguments, PrintStream output, PrintStream error) {
-        if (invalidCall(arguments, output, error, 16)) {
+        if (invalidCall(arguments, output, error)) {
             return usage(error);
         }
         try {
@@ -53,7 +55,7 @@ public final class MutationCommandMain {
             PrintStream output,
             PrintStream error,
             Function<ProjectMutationRequest, MutationRun> executor) {
-        if (invalidCall(arguments, output, error, 16) || executor == null) {
+        if (invalidCall(arguments, output, error) || executor == null) {
             return usage(error);
         }
         try {
@@ -65,9 +67,10 @@ public final class MutationCommandMain {
         }
     }
 
-    private static boolean invalidCall(
-            String[] arguments, PrintStream output, PrintStream error, int expectedArguments) {
-        return arguments == null || arguments.length != expectedArguments
+    private static boolean invalidCall(String[] arguments, PrintStream output, PrintStream error) {
+        int required = OPTIONS.size() * 2;
+        return arguments == null
+                || (arguments.length != required && arguments.length != required + 2)
                 || output == null || error == null;
     }
 
@@ -86,10 +89,11 @@ public final class MutationCommandMain {
     }
 
     private static ProjectMutationRequest request(String[] arguments) {
-        if (arguments.length != OPTIONS.size() * 2) {
+        Map<String, String> values = pairs(arguments);
+        String mutationMin = values.remove(MUTATION_MIN);
+        if (!values.keySet().equals(OPTIONS)) {
             throw new IllegalArgumentException("usage");
         }
-        Map<String, String> values = pairs(arguments);
         return new ProjectMutationRequest(
                 absolute(values.get("--project")),
                 absolute(values.get("--inventory")),
@@ -98,7 +102,10 @@ public final class MutationCommandMain {
                 absolute(values.get("--maven-home")),
                 absolute(values.get("--maven-repository")),
                 absolute(values.get("--listener")),
-                timeout(values.get("--timeout-millis")));
+                timeout(values.get("--timeout-millis")),
+                mutationMin == null
+                        ? GateThreshold.DEFAULT_MUTATION_MIN
+                        : GateThreshold.mutationMin(mutationMin));
     }
 
     private static Map<String, String> pairs(String[] arguments) {
@@ -106,13 +113,11 @@ public final class MutationCommandMain {
         for (int index = 0; index < arguments.length; index += 2) {
             String option = arguments[index];
             String value = arguments[index + 1];
-            if (!OPTIONS.contains(option) || value == null || value.isEmpty()
+            boolean known = OPTIONS.contains(option) || MUTATION_MIN.equals(option);
+            if (!known || value == null || value.isEmpty()
                     || values.put(option, value) != null) {
                 throw new IllegalArgumentException("usage");
             }
-        }
-        if (!values.keySet().equals(OPTIONS)) {
-            throw new IllegalArgumentException("usage");
         }
         return values;
     }

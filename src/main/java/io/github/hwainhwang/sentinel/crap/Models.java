@@ -124,7 +124,16 @@ public final class Models {
 
         public static CallableMetric known(
                 CallableDefinition callable, long coveredUnits, long totalUnits) {
-            ExactCrap score = ExactCrap.calculate(callable.complexity(), coveredUnits, totalUnits);
+            return known(callable, coveredUnits, totalUnits, GateThreshold.DEFAULT_CRAP_MAX);
+        }
+
+        public static CallableMetric known(
+                CallableDefinition callable,
+                long coveredUnits,
+                long totalUnits,
+                GateThreshold crapMax) {
+            ExactCrap score = ExactCrap.calculate(
+                    callable.complexity(), coveredUnits, totalUnits, crapMax);
             return new CallableMetric(callable, coveredUnits, totalUnits, score, null);
         }
 

@@ -5,8 +5,6 @@ import java.math.BigInteger;
 
 /** An exact CRAP score represented as a reduced fraction. */
 public final class ExactCrap {
-    private static final BigInteger PASS_LIMIT = BigInteger.valueOf(8);
-
     private final BigInteger numerator;
     private final BigInteger denominator;
     private final String decimal;
@@ -20,13 +18,21 @@ public final class ExactCrap {
     }
 
     public static ExactCrap calculate(long complexity, long coveredUnits, long totalUnits) {
+        return calculate(complexity, coveredUnits, totalUnits, GateThreshold.DEFAULT_CRAP_MAX);
+    }
+
+    public static ExactCrap calculate(
+            long complexity, long coveredUnits, long totalUnits, GateThreshold crapMax) {
         validate(complexity, coveredUnits, totalUnits);
+        if (crapMax == null) {
+            throw new IllegalArgumentException("crapMaxInvalid");
+        }
         BigInteger cc = BigInteger.valueOf(complexity);
         BigInteger total = BigInteger.valueOf(totalUnits);
         BigInteger uncovered = BigInteger.valueOf(totalUnits - coveredUnits);
         BigInteger denominator = total.pow(3);
         BigInteger numerator = cc.pow(2).multiply(uncovered.pow(3)).add(cc.multiply(denominator));
-        boolean passed = numerator.compareTo(denominator.multiply(PASS_LIMIT)) <= 0;
+        boolean passed = crapMax.crapPasses(numerator, denominator);
         BigInteger divisor = numerator.gcd(denominator);
         return new ExactCrap(numerator.divide(divisor), denominator.divide(divisor), passed);
     }

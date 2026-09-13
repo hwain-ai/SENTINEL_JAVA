@@ -23,7 +23,7 @@ public final class ProjectMutationRunner {
         try (Mutate4JavaAdapter backend = new Mutate4JavaAdapter(request.backendJar())) {
             TypedMavenRunner tests = new TypedMavenRunner(request, events);
             List<MutationRecord> records = execute(request, sources, backend, tests);
-            return new MutationRun(records, MutationGate.component(records));
+            return new MutationRun(records, MutationGate.component(records, request.mutationMin()));
         } finally {
             deleteEventDirectory(events);
             verifyOriginals(request, sources);

@@ -1,0 +1,184 @@
+#!/usr/bin/python3 -I
+"""SENTINEL tool-protocol adapter for the Java checker.
+
+Reads one sentinel-tool-protocol-v1 request from stdin and, from the checker
+repository named in the sibling ``home`` file, runs in order: a Maven test run
+with the locked JaCoCo agent on a disposable copy of the project, the JaCoCo XML
+report, the CRAP gate (SelfCrapMain) and the mutate4java mutation gate
+(MutationCommandMain). Exactly one response is written to stdout; every child's
+output goes to a temporary log.
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+STATUS_BY_EXIT = {
+    0: "passed",
+    1: "toolError",
+    2: "qualityFailed",
+    3: "usageConfigError",
+    4: "baselineFailed",
+    5: "dependencyError",
+    6: "backendError",
+    7: "evidenceError",
+}
+IDENTITY_KEYS = ("protocolVersion", "requestId", "command", "moduleId", "language")
+# Same exclusions as ProjectSnapshot and ProductionInventory in the checker.
+EXCLUDED_DIRECTORIES = {".git", ".sentinel", ".toolchain", "target", "build", "out", ".sentinel-tools"}
+MUTATION_TIMEOUT_MILLIS = "600000"
+CLI_PACKAGE = "io.github.hwainhwang.sentinel.cli"
+
+
+def load_locks(home: Path) -> dict:
+    toolchain = json.loads((home / "toolchain.lock.json").read_text(encoding="utf-8"))["toolchains"]
+    backend = json.loads((home / "backend.lock.json").read_text(encoding="utf-8"))
+    backends = home / ".toolchain" / "backends"
+    return {
+        "java_home": home / ".toolchain" / toolchain["java"]["installDirectory"],
+        "maven_home": home / ".toolchain" / toolchain["maven"]["installDirectory"],
+        "repository": home / ".toolchain" / "m2",
+        "agent": backends / backend["artifacts"]["jacoco-agent"]["fileName"],
+        "cli": backends / backend["artifacts"]["jacoco-cli"]["fileName"],
+        "mutation_jar": backends / backend["mutationBackend"]["runtime"]["fileName"],
+        "classes": home / "target" / "classes",
+    }
+
+
+def is_production(relative: str) -> bool:
+    return relative.endswith(".java") and (relative.startswith("src/main/java/") or "/src/main/java/" in relative)
+
+
+def production_sources(root: Path) -> list:
+    found = []
+    for current, directories, files in os.walk(root):
+        directories[:] = sorted(name for name in directories if name not in EXCLUDED_DIRECTORIES)
+        for name in files:
+            relative = (Path(current) / name).relative_to(root).as_posix()
+            if is_production(relative):
+                found.append(relative)
+    return sorted(found)
+
+
+def copy_project(root: Path, destination: Path) -> None:
+    shutil.copytree(root, destination, ignore=lambda _directory, names: [n for n in names if n in EXCLUDED_DIRECTORIES], symlinks=False)
+
+
+def environment(locks: dict, home_directory: Path) -> dict:
+    return {
+        "HOME": str(home_directory),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": f"{locks['java_home'] / 'bin'}:{locks['maven_home'] / 'bin'}:/usr/bin:/bin",
+        "JAVA_HOME": str(locks["java_home"]),
+        "MAVEN_HOME": str(locks["maven_home"]),
+        "MAVEN_SKIP_RC": "true",
+    }
+
+
+def run(command: list, cwd: Path, env: dict, log) -> int:
+    try:
+        return subprocess.run(command, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log, check=False).returncode
+    except OSError:
+        return 5
+
+
+def crap_gate(locks: dict, snapshot: Path, env: dict, log, crap_max) -> int:
+    java = str(locks["java_home"] / "bin" / "java")
+    mvn = str(locks["maven_home"] / "bin" / "mvn")
+    agent = f"-javaagent:{locks['agent']}=destfile=target/jacoco.exec,append=false"
+    if run([mvn, "-o", "-B", "-ntp", f"-Dmaven.repo.local={locks['repository']}", f"-DargLine={agent}", "test"], snapshot, env, log) != 0:
+        return 1
+    if not (snapshot / "target" / "jacoco.exec").is_file():
+        return 1
+    xml = snapshot / "target" / "sentinel-jacoco.xml"
+    report = [java, "-jar", str(locks["cli"]), "--quiet", "report", "target/jacoco.exec",
+              "--classfiles", "target/classes", "--sourcefiles", "src/main/java", "--encoding", "UTF-8", "--xml", str(xml)]
+    if run(report, snapshot, env, log) != 0:
+        return 1
+    classpath = sorted(str(path) for path in locks["repository"].rglob("*.jar"))
+    command = [java, "-cp", str(locks["classes"]), f"{CLI_PACKAGE}.SelfCrapMain"]
+    if crap_max is not None:
+        command += ["--crap-max", str(crap_max)]
+    command += [str(snapshot), "src/main/java", "target/sentinel-jacoco.xml", *classpath]
+    return run(command, snapshot, env, log)
+
+
+def mutation_gate(locks: dict, project_root: Path, inventory: Path, env: dict, log, mutation_min) -> int:
+    java = str(locks["java_home"] / "bin" / "java")
+    command = [java, "-cp", str(locks["classes"]), f"{CLI_PACKAGE}.MutationCommandMain",
+               "--project", str(project_root), "--inventory", str(inventory),
+               "--backend", str(locks["mutation_jar"]), "--java-home", str(locks["java_home"]),
+               "--maven-home", str(locks["maven_home"]), "--maven-repository", str(locks["repository"]),
+               "--listener", str(locks["classes"]), "--timeout-millis", MUTATION_TIMEOUT_MILLIS]
+    if mutation_min is not None:
+        command += ["--mutation-min", str(mutation_min)]
+    return run(command, project_root, env, log)
+
+
+def combined(crap_exit: int, mutation_exit: int) -> int:
+    # Both Java entry points use 0 pass, 2 quality failure, 4 usage/tool failure.
+    if crap_exit in (1, 5) or mutation_exit in (1, 5):
+        return max(code for code in (crap_exit, mutation_exit) if code in (1, 5))
+    if 4 in (crap_exit, mutation_exit):
+        return 1
+    if 2 in (crap_exit, mutation_exit):
+        return 2
+    return 0 if crap_exit == 0 and mutation_exit == 0 else 6
+
+
+def main() -> int:
+    here = Path(__file__).resolve().parent
+    manifest = json.loads((here / "sentinel-tool.json").read_text(encoding="utf-8"))
+    home = Path((here / "home").read_text(encoding="utf-8").splitlines()[0])
+    request = json.load(sys.stdin)
+    response = {key: request.get(key) for key in IDENTITY_KEYS}
+    response["toolVersion"] = manifest["version"]
+
+    def finish(exit_code: int) -> int:
+        status = STATUS_BY_EXIT.get(exit_code, "backendError")
+        exit_code = 6 if status == "backendError" else exit_code
+        response.update(status=status, exitCode=exit_code, passed=status == "passed")
+        sys.stdout.write(json.dumps(response, separators=(",", ":")) + "\n")
+        sys.stdout.flush()
+        return exit_code
+
+    if (
+        request.get("protocolVersion") != "sentinel-tool-protocol-v1"
+        or request.get("command") != "check"
+        or request.get("language") != manifest["language"]
+    ):
+        return finish(3)
+    project_root = Path(request["projectRoot"])
+    if not (project_root / "pom.xml").is_file():
+        return finish(3)
+    gate = request.get("gate") or {}
+    try:
+        locks = load_locks(home)
+    except (OSError, KeyError, ValueError):
+        return finish(5)
+    with tempfile.TemporaryDirectory(prefix="sentinel-tool-java-") as directory:
+        work = Path(directory)
+        sources = production_sources(project_root)
+        if not sources:
+            return finish(3)
+        inventory = work / "production.inventory"
+        inventory.write_text("sentinel-java-production-v1\n" + "".join(f"{s}\n" for s in sources), encoding="utf-8")
+        snapshot = work / "snapshot"
+        copy_project(project_root, snapshot)
+        home_directory = work / "home"
+        home_directory.mkdir(mode=0o700)
+        env = environment(locks, home_directory)
+        with open(work / "checker.log", "wb") as log:
+            crap_exit = crap_gate(locks, snapshot, env, log, gate.get("crapMax"))
+            mutation_exit = mutation_gate(locks, project_root, inventory, env, log, gate.get("mutationMin"))
+    return finish(combined(crap_exit, mutation_exit))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

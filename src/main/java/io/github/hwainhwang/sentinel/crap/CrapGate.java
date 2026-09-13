@@ -17,10 +17,18 @@ public final class CrapGate {
 
     public static Result evaluate(
             Map<String, byte[]> sources, byte[] coverageXml, List<Path> dependencyClasspath) {
+        return evaluate(sources, coverageXml, dependencyClasspath, GateThreshold.DEFAULT_CRAP_MAX);
+    }
+
+    public static Result evaluate(
+            Map<String, byte[]> sources,
+            byte[] coverageXml,
+            List<Path> dependencyClasspath,
+            GateThreshold crapMax) {
         List<Models.CallableDefinition> definitions = JavaAnalyzer.analyzeAll(
                 sources, dependencyClasspath);
         JacocoCoverage.Report report = JacocoCoverage.parse(coverageXml);
-        List<Models.CallableMetric> metrics = JacocoCoverage.measure(definitions, report);
+        List<Models.CallableMetric> metrics = JacocoCoverage.measure(definitions, report, crapMax);
         return result(metrics);
     }
 

@@ -22,7 +22,9 @@ class SpecGoldenSnapshotTest {
                 "crap/stable-sort-v1.json",
                 "921f87cdb842042fad914147c2d4daded2654175088c9284abc3cff0cbff1f06",
                 "gate/mutation-v1.json",
-                "10a72c7fc59f3ca89ba9a7c7985c17f156f4aac86f2513f585efbfb46c686dbc");
+                "10a72c7fc59f3ca89ba9a7c7985c17f156f4aac86f2513f585efbfb46c686dbc",
+                "gate/threshold-v1.json",
+                "188f7bdad01fb970ab06822a5eadaca5e0a208a8b88409c34300b6fa9b76a5f3");
 
         for (Map.Entry<String, String> entry : expected.entrySet()) {
             assertEquals(entry.getValue(), sha256(ROOT.resolve(entry.getKey())), entry.getKey());

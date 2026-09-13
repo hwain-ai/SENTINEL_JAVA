@@ -75,7 +75,7 @@ class ProductionInventoryTest {
         List<ProductionSource> sources = ProductionInventory.load(
                 repository, repository.resolve("production.inventory"));
 
-        assertEquals(61, sources.size());
+        assertEquals(62, sources.size());
     }
 
     private Path source(String relative, String body) throws Exception {

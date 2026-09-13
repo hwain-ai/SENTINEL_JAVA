@@ -18,6 +18,7 @@ final class EvidenceFixtures {
     static Map<String, Object> strictCheckBody() {
         Map<String, Object> crap = map(
                 "callableCount", 1,
+                "crapMax", "8",
                 "maxNumerator", "8",
                 "maxDenominator", "1",
                 "pass", true,
@@ -34,6 +35,7 @@ final class EvidenceFixtures {
                 "ignored", 0,
                 "toolError", 0,
                 "unauthorizedExclusion", 0,
+                "mutationMin", "100",
                 "pass", true);
         return map(
                 "schemaVersion", "sentinel-evidence-v1",

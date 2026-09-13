@@ -38,8 +38,41 @@ class SelfCrapMainTest {
         assertEquals("", standardError.toString(StandardCharsets.UTF_8));
         assertEquals(
                 "{\"schemaVersion\":\"sentinel-java-self-crap-v1\",\"passed\":true,"
+                        + "\"crapMax\":\"8\","
                         + "\"total\":1,\"known\":1,\"unknown\":0,\"aboveLimit\":0}\n",
                 standardOut.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void acceptsAnExplicitCrapLimitBeforeThePositionalArguments() throws Exception {
+        Path sourceRoot = projectRoot.resolve("src/main/java");
+        Files.createDirectories(sourceRoot);
+        Files.writeString(
+                sourceRoot.resolve("Sample.java"),
+                "class Sample { int value() { return 1; } }",
+                StandardCharsets.UTF_8);
+        Path report = projectRoot.resolve("target/jacoco.xml");
+        Files.createDirectories(report.getParent());
+        Files.writeString(report, report("()I", 2, 0), StandardCharsets.UTF_8);
+        ByteArrayOutputStream standardOut = new ByteArrayOutputStream();
+        ByteArrayOutputStream standardError = new ByteArrayOutputStream();
+
+        int exit = SelfCrapMain.run(
+                new String[]{"--crap-max", "0.5", projectRoot.toString(), "src/main/java", "target/jacoco.xml"},
+                new PrintStream(standardOut, true, StandardCharsets.UTF_8),
+                new PrintStream(standardError, true, StandardCharsets.UTF_8));
+
+        assertEquals(2, exit);
+        assertTrue(standardOut.toString(StandardCharsets.UTF_8).contains("\"crapMax\":\"0.5\""));
+        assertTrue(standardOut.toString(StandardCharsets.UTF_8).contains("\"aboveLimit\":1"));
+        assertTrue(standardError.toString(StandardCharsets.UTF_8).startsWith("CRAP_ABOVE "));
+
+        int invalid = SelfCrapMain.run(
+                new String[]{"--crap-max", "8.", projectRoot.toString(), "src/main/java", "target/jacoco.xml"},
+                new PrintStream(new ByteArrayOutputStream()),
+                new PrintStream(standardError, true, StandardCharsets.UTF_8));
+        assertEquals(4, invalid);
+        assertTrue(standardError.toString(StandardCharsets.UTF_8).contains("crapMaxInvalid"));
     }
 
     @Test
