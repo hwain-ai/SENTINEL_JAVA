@@ -3,12 +3,12 @@ package io.github.hwainhwang.sentinel.mutation;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-/** Closed argv/environment, bounded waiting and best-effort process-group cleanup on Linux. */
+/** Closed argv/environment, bounded waiting and best-effort cleanup of the child's process tree. */
 final class PitProbeProcess {
     private PitProbeProcess() {
         throw new AssertionError("no instances");
@@ -39,9 +39,7 @@ final class PitProbeProcess {
     }
 
     private static ProcessBuilder builder(List<String> arguments, Path root) throws IOException {
-        List<String> argv = new ArrayList<>(List.of("/usr/bin/setsid", "--wait"));
-        argv.addAll(arguments);
-        ProcessBuilder builder = new ProcessBuilder(argv).directory(root.toFile())
+        ProcessBuilder builder = new ProcessBuilder(arguments).directory(root.toFile())
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.DISCARD);
         Map<String, String> environment = builder.environment();
@@ -71,18 +69,18 @@ final class PitProbeProcess {
     }
 
     private static void stop(Process process) {
-        // RISK(side-effect): only the new setsid process group is targeted, never the caller's group.
+        // RISK(side-effect): only the child and its descendants are targeted, never the caller's group.
+        // Descendants are killed deepest first (Linux and macOS alike), as TypedMavenRunner does.
+        List<ProcessHandle> descendants = process.descendants()
+                .sorted(Comparator.comparingLong(ProcessHandle::pid).reversed())
+                .toList();
+        for (ProcessHandle descendant : descendants) {
+            descendant.destroyForcibly();
+        }
+        process.destroyForcibly();
         try {
-            Process killer = new ProcessBuilder("/bin/kill", "-KILL", "--", "-" + process.pid())
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD).start();
-            killer.waitFor(1, TimeUnit.SECONDS);
-            process.destroyForcibly();
             process.waitFor(1, TimeUnit.SECONDS);
-        } catch (IOException error) {
-            process.destroyForcibly();
         } catch (InterruptedException error) {
-            process.destroyForcibly();
             Thread.currentThread().interrupt();
         }
     }

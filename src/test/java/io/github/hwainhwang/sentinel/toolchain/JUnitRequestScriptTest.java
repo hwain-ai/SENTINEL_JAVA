@@ -65,7 +65,7 @@ class JUnitRequestScriptTest {
 
     private static Result run(String... arguments) throws Exception {
         String[] command = new String[arguments.length + 3];
-        command[0] = "/usr/bin/python3";
+        command[0] = "python3";
         command[1] = "-I";
         command[2] = "scripts/junit_request.py";
         System.arraycopy(arguments, 0, command, 3, arguments.length);

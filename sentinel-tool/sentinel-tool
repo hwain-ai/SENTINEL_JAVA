@@ -38,13 +38,21 @@ CLI_PACKAGE = "io.github.hwainhwang.sentinel.cli"
 
 
 def load_locks(home: Path) -> dict:
-    toolchain = json.loads((home / "toolchain.lock.json").read_text(encoding="utf-8"))["toolchains"]
+    """Resolved tool paths for this platform; the launcher's `paths` command owns the platform logic."""
+
     backend = json.loads((home / "backend.lock.json").read_text(encoding="utf-8"))
     backends = home / ".toolchain" / "backends"
+    completed = subprocess.run(
+        [sys.executable, "-I", "-B", str(home / "scripts" / "toolchain.py"), "paths"],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, text=True,
+    )
+    if completed.returncode != 0:
+        raise OSError("toolchain paths unavailable")
+    paths = json.loads(completed.stdout)
     return {
-        "java_home": home / ".toolchain" / toolchain["java"]["installDirectory"],
-        "maven_home": home / ".toolchain" / toolchain["maven"]["installDirectory"],
-        "repository": home / ".toolchain" / "m2",
+        "java_home": Path(paths["javaHome"]),
+        "maven_home": Path(paths["mavenHome"]),
+        "repository": Path(paths["repository"]),
         "agent": backends / backend["artifacts"]["jacoco-agent"]["fileName"],
         "cli": backends / backend["artifacts"]["jacoco-cli"]["fileName"],
         "mutation_jar": backends / backend["mutationBackend"]["runtime"]["fileName"],
@@ -185,7 +193,7 @@ def main() -> int:
         return finish(5)
     repository = maven_repository(locks, project_root)
     with tempfile.TemporaryDirectory(prefix="sentinel-tool-java-") as directory:
-        work = Path(directory)
+        work = Path(directory).resolve()  # macOS: /var is a symlink and the checker compares real paths
         sources = production_sources(project_root)
         if not sources:
             return finish(3)

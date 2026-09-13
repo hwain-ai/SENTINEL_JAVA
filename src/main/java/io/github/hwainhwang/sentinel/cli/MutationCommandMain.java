@@ -119,27 +119,34 @@ public final class MutationCommandMain {
             String value = arguments[index + 1];
             if (CHANGED_FILE.equals(option)) {
                 changed.add(changedPath(value));
-                continue;
-            }
-            boolean known = OPTIONS.contains(option) || MUTATION_MIN.equals(option);
-            if (!known || value == null || value.isEmpty()
-                    || values.put(option, value) != null) {
-                throw new IllegalArgumentException("usage");
+            } else {
+                putOption(values, option, value);
             }
         }
         return values;
     }
 
+    private static void putOption(Map<String, String> values, String option, String value) {
+        boolean known = OPTIONS.contains(option) || MUTATION_MIN.equals(option);
+        if (!known || value.isEmpty() || values.put(option, value) != null) {
+            throw new IllegalArgumentException("usage");
+        }
+    }
+
     private static String changedPath(String value) {
-        if (value == null || value.isEmpty() || value.startsWith("/")) {
+        if (value.isEmpty() || value.startsWith("/")) {
             throw new IllegalArgumentException("changedPathInvalid");
         }
         for (String part : value.split("/", -1)) {
-            if (part.isEmpty() || ".".equals(part) || "..".equals(part)) {
+            if (!plainSegment(part)) {
                 throw new IllegalArgumentException("changedPathInvalid");
             }
         }
         return value;
+    }
+
+    private static boolean plainSegment(String part) {
+        return !part.isEmpty() && !".".equals(part) && !"..".equals(part);
     }
 
     private static Path absolute(String value) {

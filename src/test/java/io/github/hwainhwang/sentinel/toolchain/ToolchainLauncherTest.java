@@ -16,7 +16,12 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+/** The thin shell wrappers, the cross-platform launcher (scripts/toolchain.py) and the lock helper behind them. */
 class ToolchainLauncherTest {
+    private static final String PYTHON = System.getenv().getOrDefault("SENTINEL_PYTHON", "python3");
+    private static final java.util.List<String> PLATFORMS =
+            java.util.List.of("linux-x86_64", "linux-aarch64", "darwin-x86_64", "darwin-aarch64");
+
     @TempDir
     Path temporaryDirectory;
 
@@ -97,11 +102,11 @@ class ToolchainLauncherTest {
         Files.setPosixFilePermissions(
                 fakeJava,
                 EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE));
-        ownerOnly(repository.resolve(".toolchain"));
+        privateRuntimeDirectories(repository);
         Result result = run(repository, "scripts/java.sh", "--version");
 
         assertNotEquals(0, result.exitCode());
-        assertTrue(result.output().contains("installed tree manifest mismatch"));
+        assertTrue(result.output().contains("installed tree manifest mismatch"), result.output());
         assertFalse(result.output().contains("PARTIAL_EXECUTED"));
     }
 
@@ -122,9 +127,8 @@ class ToolchainLauncherTest {
     void mavenUserSettingsAreRejectedBeforeAnyRuntimeCanExecute() throws Exception {
         Path repository = copyLauncherRepository();
         Path settings = repository.resolve(".toolchain/home/.m2/settings.xml");
+        privateRuntimeDirectories(repository);
         Files.createDirectories(settings.getParent());
-        ownerOnly(repository.resolve(".toolchain"));
-        ownerOnly(repository.resolve(".toolchain/home"));
         Files.writeString(settings, "<settings/>", StandardCharsets.UTF_8);
         Result result = run(repository, "scripts/mvn.sh", "--version");
 
@@ -183,7 +187,8 @@ class ToolchainLauncherTest {
                         "3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e",
                         "0".repeat(64)),
                 StandardCharsets.UTF_8);
-        Result placeholder = runLockTool(repository, "java", "--require-locked");
+        // The zeroed checksum sits in the linux-x86_64 entry; name that platform so macOS hosts check it too.
+        Result placeholder = runLockTool(repository, "java", "--require-locked", "--platform", "linux-x86_64");
 
         assertNotEquals(0, placeholder.exitCode());
         assertTrue(placeholder.output().contains("placeholder"));
@@ -196,13 +201,23 @@ class ToolchainLauncherTest {
         String original = Files.readString(lock, StandardCharsets.UTF_8);
         Files.writeString(
                 lock,
-                original.replace("\"platform\": \"linux-x64\"", "\"platform\": 17"),
+                original.replace("\"linux-aarch64\": {", "\"plan9-mips\": {"),
                 StandardCharsets.UTF_8);
 
-        Result platform = runLockTool(repository, "java", "--require-locked");
+        Result platform = runLockTool(repository, "java", "--require-locked", "--platform", "linux-x86_64");
 
         assertNotEquals(0, platform.exitCode());
         assertTrue(platform.output().contains("platform"));
+
+        Files.writeString(
+                lock,
+                original.replace("\"platform\": \"linux\"", "\"platform\": 17"),
+                StandardCharsets.UTF_8);
+
+        Result mavenPlatform = runLockTool(repository, "maven", "--require-locked");
+
+        assertNotEquals(0, mavenPlatform.exitCode());
+        assertTrue(mavenPlatform.output().contains("platform"));
 
         Files.writeString(
                 lock,
@@ -238,15 +253,9 @@ class ToolchainLauncherTest {
     }
 
     @Test
-    void explicitBashAndMavenConfigurationOverridesAreRejected() throws Exception {
+    void mavenArgumentsOutsideTheClosedSetAreRejected() throws Exception {
         Path repository = Path.of("").toAbsolutePath().normalize();
 
-        Result explicit = runCommand(
-                repository,
-                Map.of(),
-                "/usr/bin/bash",
-                repository.resolve("scripts/mvn.sh").toString(),
-                "--version");
         Result repositoryOverride = run(
                 repository,
                 "scripts/mvn.sh",
@@ -257,72 +266,69 @@ class ToolchainLauncherTest {
                 "scripts/mvn.sh",
                 "--settings=/tmp/untrusted-settings.xml",
                 "--version");
-        Result javaExplicit = runCommand(
-                repository,
-                Map.of(),
-                "/usr/bin/bash",
-                repository.resolve("scripts/java.sh").toString(),
-                "--version");
-        Result bootstrapExplicit = runCommand(
-                repository,
-                Map.of(),
-                "/usr/bin/bash",
-                repository.resolve("scripts/bootstrap-toolchain.sh").toString());
+        Result shellSelector = run(repository, "scripts/mvn.sh", "-Dtest=Foo;rm", "test");
 
-        assertNotEquals(0, explicit.exitCode());
-        assertTrue(explicit.output().contains("must be executed directly"));
         assertNotEquals(0, repositoryOverride.exitCode());
         assertTrue(repositoryOverride.output().contains("Maven argument is not allowed"));
         assertNotEquals(0, settingsOverride.exitCode());
         assertTrue(settingsOverride.output().contains("Maven argument is not allowed"));
-        assertNotEquals(0, javaExplicit.exitCode());
-        assertTrue(javaExplicit.output().contains("must be executed directly"));
-        assertNotEquals(0, bootstrapExplicit.exitCode());
-        assertTrue(bootstrapExplicit.output().contains("must be executed directly"));
+        assertNotEquals(0, shellSelector.exitCode());
+        assertTrue(shellSelector.output().contains("Maven argument is not allowed"));
     }
 
     @Test
-    void spoofedMarkerWithHostileBashEnvironmentCannotReachMaven() throws Exception {
+    void childProcessesNeverInheritTheCallersEnvironment() throws Exception {
         Path repository = Path.of("").toAbsolutePath().normalize();
-        Path hostile = temporaryDirectory.resolve("hostile-bash-env.sh");
-        Path marker = temporaryDirectory.resolve("hostile-executed");
-        Files.writeString(
-                hostile,
-                "/usr/bin/touch '" + marker + "'\n",
-                StandardCharsets.UTF_8);
 
-        Result result = runCommandClean(
+        // The JVM announces inherited JAVA_TOOL_OPTIONS on stderr; a launched child must stay silent.
+        Result result = run(
                 repository,
+                "scripts/mvn.sh",
                 Map.of(
-                        "BASH_ENV", hostile.toString(),
-                        "SENTINEL_JAVA_SEALED_ENTRY", "direct-v1"),
-                "/usr/bin/bash",
-                "--noprofile",
-                "--norc",
-                repository.resolve("scripts/mvn.sh").toString(),
+                        "JAVA_TOOL_OPTIONS", "-Dsentinel.hostile=true",
+                        "MAVEN_OPTS", "-Dsentinel.hostile=true",
+                        "MAVEN_ARGS", "--settings /hostile/settings.xml",
+                        "JAVA_HOME", "/hostile/java",
+                        "M2_HOME", "/hostile/maven"),
                 "--version");
 
-        assertNotEquals(0, result.exitCode());
-        assertTrue(Files.exists(marker));
-        assertTrue(result.output().contains("must be executed directly"));
-        assertFalse(result.output().contains("Apache Maven 3.9.16"));
+        assertEquals(0, result.exitCode(), result.output());
+        assertTrue(result.output().contains("Apache Maven 3.9.16"));
+        assertFalse(result.output().contains("Picked up JAVA_TOOL_OPTIONS"));
+        assertFalse(result.output().contains("hostile"));
     }
 
     @Test
-    void exactShebangReplayDocumentsTheShellOnlyBoundary() throws Exception {
+    void wrappersRunFromAnEmptyEnvironmentUnderAnExplicitShell() throws Exception {
         Path repository = Path.of("").toAbsolutePath().normalize();
 
         Result result = runCommandClean(
                 repository,
-                Map.of("SENTINEL_JAVA_SEALED_ENTRY", "direct-v1"),
-                "/usr/bin/bash",
-                "--noprofile",
-                "--norc",
+                Map.of(),
+                "/bin/sh",
                 repository.resolve("scripts/mvn.sh").toString(),
                 "--version");
 
         assertEquals(0, result.exitCode(), result.output());
         assertTrue(result.output().contains("Apache Maven 3.9.16"));
+    }
+
+    @Test
+    void everySupportedPlatformHasACompleteLockedJdkEntry() throws Exception {
+        Path repository = Path.of("").toAbsolutePath().normalize();
+        String lock = Files.readString(repository.resolve("toolchain.lock.json"), StandardCharsets.UTF_8);
+
+        for (String platform : PLATFORMS) {
+            assertTrue(lock.contains("\"" + platform + "\": {"), platform);
+            Result selected = runLockTool(repository, "java", "--require-locked", "--platform", platform);
+            assertEquals(0, selected.exitCode(), platform + ": " + selected.output());
+        }
+        assertTrue(lock.contains("\"javaHomeRelativePath\": \"Contents/Home\""));
+
+        Result detected = runLauncher(repository, "platform");
+
+        assertEquals(0, detected.exitCode(), detected.output());
+        assertTrue(PLATFORMS.contains(detected.output().trim()), detected.output());
     }
 
     @Test
@@ -439,6 +445,14 @@ class ToolchainLauncherTest {
                         PosixFilePermission.OWNER_EXECUTE));
     }
 
+    /** The private runtime directories bootstrap creates; every launcher command requires them. */
+    private static void privateRuntimeDirectories(Path repository) throws IOException {
+        for (String name : new String[] {".toolchain", ".toolchain/home", ".toolchain/m2"}) {
+            Files.createDirectories(repository.resolve(name));
+            ownerOnly(repository.resolve(name));
+        }
+    }
+
     private static Path bashEnvironmentCanary(Path repository) throws IOException {
         Path canary = repository.resolve("hostile-bash-env.sh");
         Files.writeString(
@@ -453,8 +467,9 @@ class ToolchainLauncherTest {
         Path destination = temporaryDirectory.resolve("repository");
         Files.createDirectories(destination.resolve("scripts"));
         Files.copy(source.resolve("toolchain.lock.json"), destination.resolve("toolchain.lock.json"));
+        Files.copy(source.resolve("backend.lock.json"), destination.resolve("backend.lock.json"));
         for (String script : new String[] {
-            "bootstrap-toolchain.sh", "java.sh", "mvn.sh", "toolchain_lock.py"
+            "bootstrap-toolchain.sh", "java.sh", "mvn.sh", "toolchain.py", "toolchain_lock.py", "backend_lock.py"
         }) {
             Files.copy(
                     source.resolve("scripts").resolve(script),
@@ -478,11 +493,23 @@ class ToolchainLauncherTest {
         return runCommand(repository, hostile, command.toArray(String[]::new));
     }
 
+    private static Result runLauncher(Path repository, String... arguments)
+            throws IOException, InterruptedException {
+        java.util.ArrayList<String> command = new java.util.ArrayList<>();
+        command.add(PYTHON);
+        command.add("-I");
+        command.add("-B");
+        command.add(repository.resolve("scripts/toolchain.py").toString());
+        command.addAll(java.util.List.of(arguments));
+        return runCommand(repository, Map.of(), command.toArray(String[]::new));
+    }
+
     private static Result runLockTool(Path repository, String... arguments)
             throws IOException, InterruptedException {
         java.util.ArrayList<String> command = new java.util.ArrayList<>();
-        command.add("/usr/bin/python3");
+        command.add(PYTHON);
         command.add("-I");
+        command.add("-B");
         command.add(repository.resolve("scripts/toolchain_lock.py").toString());
         command.add(repository.resolve("toolchain.lock.json").toString());
         command.addAll(java.util.List.of(arguments));

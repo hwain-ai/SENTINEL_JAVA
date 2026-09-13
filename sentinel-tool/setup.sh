@@ -1,12 +1,7 @@
-#!/usr/bin/bash
-# First-run preparation for the Java checker: pinned JDK and Maven, locked
-# JaCoCo and mutate4java backends, the compiled checker classes and a doctor
-# pass. Safe to rerun; each step verifies before it downloads anything.
-set -euo pipefail
-root="$(cd -- "$(dirname -- "$0")/.." && pwd -P)"
-"$root/scripts/bootstrap-toolchain.sh"
-"$root/scripts/bootstrap-backends.sh"
-"$root/scripts/bootstrap-m2.sh"
-"$root/scripts/mvn.sh" -o -B -ntp -q compile
-"$root/scripts/doctor.sh" >/dev/null
-printf 'sentinel-tool: java checker ready\n' >&2
+#!/bin/sh
+# Standard tools first so a hostile PATH cannot hide dirname or python3; the launcher itself gives
+# every child a clean environment.
+PATH="/usr/bin:/bin:${PATH:-}"
+export PATH
+# First-run preparation: JDK, Maven, backends, offline repository, compile, doctor. See scripts/toolchain.py.
+exec "${SENTINEL_PYTHON:-python3}" -I -B "$(dirname "$0")/../scripts/toolchain.py" setup

@@ -91,7 +91,7 @@ class BackendLockScriptTest {
 
     private static Result run(Path lock, String... arguments) throws Exception {
         String[] command = new String[arguments.length + 4];
-        command[0] = "/usr/bin/python3";
+        command[0] = "python3";
         command[1] = "-I";
         command[2] = "scripts/backend_lock.py";
         command[3] = lock.toString();

@@ -14,6 +14,20 @@ CLI 진입점은 두 개입니다. `SelfCrapMain`은 JaCoCo XML로 CRAP 판정�
 
 검사 대상 프로젝트의 Maven 의존성은 이 검사기의 잠긴 `.toolchain/m2`에서만 오프라인으로 해석되므로, 거기 없는 의존성을 쓰는 프로젝트는 아직 검사할 수 없습니다.
 
+## 지원 플랫폼과 준비
+
+Linux(x86_64, arm64)와 macOS(Intel, Apple Silicon)를 지원합니다. Windows 는 WSL2 안에서 씁니다.
+`scripts/toolchain.py`(표준 라이브러리만 쓰는 Python 3.9 이상 실행기)가 플랫폼을 감지해 `toolchain.lock.json`의
+`platforms` 항목(Temurin JDK 17.0.20.1+1 의 공식 주소·크기·SHA-256·실행 파일·설치 트리 지문, macOS 묶음의
+`Contents/Home` 위치)으로 JDK 를 받고, 모든 플랫폼에 같은 Maven 3.9.16 tarball 을 받은 뒤 설치 트리 지문을
+잠금값과 대조합니다. `scripts/bootstrap-*.sh`·`scripts/mvn.sh`·`scripts/java.sh`·`scripts/doctor.sh`·
+`sentinel-tool/setup.sh`는 이 실행기로 넘기는 얇은 wrapper 입니다. 자식 프로세스는 상속 없는 최소
+환경(HOME 은 `.toolchain/home`, PATH 는 잠긴 JDK·Maven 만)에서 돕니다. 변이 백엔드(mutate4java)는 잠긴
+소스에서 그 플랫폼의 JDK 로 다시 컴파일하며 결과 jar 의 지문은 플랫폼과 무관하게 같습니다.
+
+검사기 자체 품질 점검 스크립트(`scripts/self-crap.sh`, `scripts/self-mutation-slice.sh`,
+`scripts/typed-mvn-test.sh`)는 아직 Linux 전용 bash 입니다. 사용자가 프로젝트를 검사하는 경로에는 쓰이지 않습니다.
+
 ## 핵심 규칙
 
 - Source는 strict UTF-8 bytes이며 BOM, CRLF와 다중 byte 문자를 보존한 0-based half-open byte range를 냅니다.
@@ -27,11 +41,11 @@ CLI 진입점은 두 개입니다. `SelfCrapMain`은 JaCoCo XML로 CRAP 판정�
 도구 잠금이 완성된 환경에서는 저장소 root에서 아래 명령으로 격리된 JDK와 Maven만 사용합니다.
 
 ```text
-scripts/bootstrap-toolchain.sh
+sentinel-tool/setup.sh
 scripts/mvn.sh -o test
 ```
 
-현재 Temurin JDK 17.0.20.1+1과 Maven 3.9.16은 archive, 실행 파일, 설치 tree digest까지 잠겨 있습니다. Launcher는 이 값과 version 출력이 모두 맞을 때만 실행합니다. 다만 Maven dependency 전체를 검증하는 `dependency-lock.json`과 JaCoCo 0.8.12는 아직 없으므로, 현재 build는 T17·T18 전체 완료 상태가 아닙니다.
+`sentinel-tool/setup.sh`(`python3 -I -B scripts/toolchain.py setup` 과 같음)는 JDK·Maven·백엔드·오프라인 Maven 저장소·컴파일·doctor 를 차례로 준비합니다. 현재 Temurin JDK 17.0.20.1+1과 Maven 3.9.16은 archive, 실행 파일, 설치 tree digest까지 네 플랫폼 모두 잠겨 있습니다. Launcher는 이 값과 version 출력이 모두 맞을 때만 실행합니다. 다만 Maven dependency 전체를 검증하는 `dependency-lock.json`과 JaCoCo 0.8.12는 아직 없으므로, 현재 build는 T17·T18 전체 완료 상태가 아닙니다.
 
 ## 설계 근거
 

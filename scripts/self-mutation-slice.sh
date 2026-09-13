@@ -86,7 +86,7 @@ run_replay() {
     HOME="$repository_root/.toolchain/home" LANG=C.UTF-8 LC_ALL=C.UTF-8 \
     PATH="$java_home/bin:/usr/bin:/bin" JAVA_HOME="$java_home" \
     "$java_home/bin/java" -jar "$mutation_jar" "$target_source" \
-      --lines 58 --max-workers 1 --test-command "$typed_command") \
+      --lines 64 --max-workers 1 --test-command "$typed_command") \
       >"$attempt/$label/raw.txt" 2>"$attempt/$label/error.txt"
   local exit_code=$?
   set -e
@@ -96,7 +96,7 @@ run_replay() {
     return 2
   fi
   /usr/bin/grep -Fq \
-    'KILLED src/main/java/io/github/hwainhwang/sentinel/crap/ExactCrap.java:58 replace decimal with null' \
+    'KILLED src/main/java/io/github/hwainhwang/sentinel/crap/ExactCrap.java:64 replace decimal with null' \
     "$attempt/$label/raw.txt"
   /usr/bin/grep -Fq 'Summary: 1 killed, 0 survived, 1 total.' \
     "$attempt/$label/raw.txt"

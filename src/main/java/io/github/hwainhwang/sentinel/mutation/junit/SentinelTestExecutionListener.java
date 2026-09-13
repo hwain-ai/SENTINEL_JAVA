@@ -253,13 +253,17 @@ public final class SentinelTestExecutionListener implements TestExecutionListene
 
     private Summary summary() {
         boolean retry = repeated(starts) || repeated(finishes) || repeated(skipped);
-        boolean incomplete = expected.isEmpty()
+        ExecutionStatus status = aggregateStatus(incomplete() || retry);
+        return new Summary(status, retry, failureTestId(status), assertionType(status), signature(status));
+    }
+
+    /** Started plus skipped, and finished plus skipped, must each be exactly the expected set. */
+    private boolean incomplete() {
+        return expected.isEmpty()
                 || starts.isEmpty()
                 || !expected.equals(union(starts.keySet(), skipped.keySet()))
                 || !expected.equals(union(finishes.keySet(), skipped.keySet()))
                 || !Collections.disjoint(starts.keySet(), skipped.keySet());
-        ExecutionStatus status = aggregateStatus(incomplete || retry);
-        return new Summary(status, retry, failureTestId(status), assertionType(status), signature(status));
     }
 
     private ExecutionStatus aggregateStatus(boolean invalidEvents) {

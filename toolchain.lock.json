@@ -5,16 +5,50 @@
     "java": {
       "vendor": "Eclipse Temurin",
       "version": "17.0.20.1+1",
-      "platform": "linux-x64",
-      "archiveUrl": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz",
-      "archiveSize": 193252603,
-      "archiveSha256": "3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e",
-      "archiveRoot": "jdk-17.0.20.1+1",
-      "installDirectory": "jdk-17.0.20.1+1",
-      "binarySha256": "f5aed21d3a0b0f4b05d3a3f9fe71263916d5bc0d47b53aa52a3340b90f0b4805",
-      "installedTreeSha256": "b710d393d67a6f21f0e6ae3b6564f800fa998c0041f2c216b22fa9be4cc3a657",
       "versionOutput": "openjdk version \"17.0.20.1\" 2026-08-18",
-      "status": "locked"
+      "status": "locked",
+      "platforms": {
+        "linux-x86_64": {
+          "archiveUrl": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz",
+          "archiveSize": 193252603,
+          "archiveSha256": "3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e",
+          "archiveRoot": "jdk-17.0.20.1+1",
+          "installDirectory": "jdk-17.0.20.1+1",
+          "binarySha256": "f5aed21d3a0b0f4b05d3a3f9fe71263916d5bc0d47b53aa52a3340b90f0b4805",
+          "installedTreeSha256": "b710d393d67a6f21f0e6ae3b6564f800fa998c0041f2c216b22fa9be4cc3a657",
+          "javaHomeRelativePath": ""
+        },
+        "linux-aarch64": {
+          "archiveUrl": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20.1_1.tar.gz",
+          "archiveSize": 191962709,
+          "archiveSha256": "457b57af8f9c93ec39080bb8c764f559dc8c89a6da1a39d718a400b7890d3e41",
+          "archiveRoot": "jdk-17.0.20.1+1",
+          "installDirectory": "jdk-17.0.20.1+1",
+          "javaHomeRelativePath": "",
+          "binarySha256": "185fdd3e40d7736c600cb948403f77fd3421e8877e2ff13271673f28a501531f",
+          "installedTreeSha256": "c619561887c2748ff8e8fc7d4374339c79718356bd14aeabf707dd9e6165a94d"
+        },
+        "darwin-x86_64": {
+          "archiveUrl": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_mac_hotspot_17.0.20.1_1.tar.gz",
+          "archiveSize": 180578248,
+          "archiveSha256": "c01975da12ed4235250ff891fe8bba73a9e73037d444b269c9d0922b5dbc8e0a",
+          "archiveRoot": "jdk-17.0.20.1+1",
+          "installDirectory": "jdk-17.0.20.1+1",
+          "javaHomeRelativePath": "Contents/Home",
+          "binarySha256": "22f862103c96b4eb2184c0c16234586d439c31b40c5066ee8a2a45c7e3c5108d",
+          "installedTreeSha256": "0cd9661b5788d733decd52570626f0d314d3213e99d1755ae48a977b18e71dd1"
+        },
+        "darwin-aarch64": {
+          "archiveUrl": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.20.1_1.tar.gz",
+          "archiveSize": 185851019,
+          "archiveSha256": "196d13ba5f10414bef7f6a05a9b3f00edacb18ebacef2b99485db9e2ee18f0e8",
+          "archiveRoot": "jdk-17.0.20.1+1",
+          "installDirectory": "jdk-17.0.20.1+1",
+          "javaHomeRelativePath": "Contents/Home",
+          "binarySha256": "af8b122943345320b179c75c3404d56a981017739746b75f9caf583632f0bea0",
+          "installedTreeSha256": "a43b07d525882b6d5a511ad88234a46e2f6a670e530e087722cde546eee1feaf"
+        }
+      }
     },
     "maven": {
       "version": "3.9.16",

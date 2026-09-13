@@ -54,7 +54,9 @@
           <failIfNoTests>true</failIfNoTests>
           <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
           <useModulePath>false</useModulePath>
-          <argLine>-javaagent:${project.basedir}/.toolchain/backends/org.jacoco.agent-0.8.12-runtime.jar=destfile=${project.build.directory}/jacoco.exec,append=false,includes=io.github.hwainhwang.sentinel.*</argLine>
+          <!-- Test temporary directories live under target/: the default macOS location is a symlinked /var path
+               that the runners' real-path checks would reject. -->
+          <argLine>-javaagent:${project.basedir}/.toolchain/backends/org.jacoco.agent-0.8.12-runtime.jar=destfile=${project.build.directory}/jacoco.exec,append=false,includes=io.github.hwainhwang.sentinel.* -Djava.io.tmpdir=${project.build.directory}</argLine>
         </configuration>
       </plugin>
       <plugin>

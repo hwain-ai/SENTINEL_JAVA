@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform as platform_module
 import re
 import stat
 import sys
@@ -35,8 +36,39 @@ COMMON_TOOL_FIELDS = {
 }
 
 
+PLATFORM_KEYS = ("linux-x86_64", "linux-aarch64", "darwin-x86_64", "darwin-aarch64")
+# Per-platform JDK fields; the remaining java fields are common to every platform.
+JAVA_PLATFORM_FIELDS = {
+    "archiveUrl",
+    "archiveSize",
+    "archiveSha256",
+    "archiveRoot",
+    "installDirectory",
+    "javaHomeRelativePath",
+    "binarySha256",
+    "installedTreeSha256",
+}
+JAVA_COMMON_FIELDS = {"vendor", "version", "versionOutput", "status", "platforms"}
+
+
 class LockError(ValueError):
     """Raised when the lock cannot safely select a toolchain."""
+
+
+def platform_key(system: str | None = None, machine: str | None = None) -> str:
+    """linux-x86_64 | linux-aarch64 | darwin-x86_64 | darwin-aarch64 for this host."""
+
+    system = (system or platform_module.system()).lower()
+    machine = (machine or platform_module.machine()).lower()
+    if system not in ("linux", "darwin"):
+        raise LockError(f"unsupported operating system: {system}")
+    if machine in ("x86_64", "amd64"):
+        architecture = "x86_64"
+    elif machine in ("aarch64", "arm64"):
+        architecture = "aarch64"
+    else:
+        raise LockError(f"unsupported architecture: {machine}")
+    return f"{system}-{architecture}"
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -92,16 +124,53 @@ def _load(path: Path) -> dict[str, Any]:
 def _validate_fields(toolchains: dict[str, Any]) -> None:
     java = toolchains["java"]
     maven = toolchains["maven"]
-    if not isinstance(java, dict) or set(java) != COMMON_TOOL_FIELDS | {"vendor"}:
+    if not isinstance(java, dict):
+        raise LockError("java toolchain fields are invalid")
+    if "platforms" in java:
+        if set(java) != JAVA_COMMON_FIELDS or not isinstance(java["platforms"], dict):
+            raise LockError("java toolchain fields are invalid")
+        for key, entry in java["platforms"].items():
+            if key not in PLATFORM_KEYS or not isinstance(entry, dict) or set(entry) != JAVA_PLATFORM_FIELDS:
+                raise LockError(f"java platform entry is invalid: {key}")
+    elif set(java) != COMMON_TOOL_FIELDS | {"vendor"}:
         raise LockError("java toolchain fields are invalid")
     if not isinstance(maven, dict) or set(maven) != COMMON_TOOL_FIELDS | {"archiveSha512"}:
         raise LockError("maven toolchain fields are invalid")
 
 
-def _select(document: dict[str, Any], tool: str, require_locked: bool) -> dict[str, Any]:
+def _for_platform(tool: str, toolchain: dict[str, Any], platform: str | None) -> dict[str, Any]:
+    """Merge the JDK's platforms[...] entry into its common fields; Maven is the same tarball everywhere."""
+
+    platforms = toolchain.get("platforms")
+    if platforms is None:
+        return toolchain
+    key = platform or platform_key()
+    entry = platforms.get(key)
+    if not isinstance(entry, dict):
+        raise LockError(f"{tool} toolchain has no entry for platform {key}")
+    merged = {name: value for name, value in toolchain.items() if name != "platforms"}
+    merged.update(entry)
+    merged["platform"] = key
+    return merged
+
+
+def java_home_relative(toolchain: dict[str, Any]) -> str:
+    """Where JAVA_HOME sits inside the installed tree ('' on Linux, Contents/Home in macOS bundles)."""
+
+    value = toolchain.get("javaHomeRelativePath", "")
+    if value and (not isinstance(value, str) or any(part in ("", ".", "..") for part in value.split("/"))):
+        raise LockError("java javaHomeRelativePath is unsafe")
+    return value
+
+
+def _select(
+    document: dict[str, Any], tool: str, require_locked: bool, platform: str | None = None
+) -> dict[str, Any]:
     toolchain = document["toolchains"].get(tool)
     if not isinstance(toolchain, dict):
         raise LockError(f"{tool} toolchain is pending")
+    toolchain = _for_platform(tool, toolchain, platform)
+    java_home_relative(toolchain)
     repository_status = _text(document, "status")
     tool_status = _text(toolchain, "status")
     if require_locked and (repository_status != LOCKED_STATUS or tool_status != LOCKED_STATUS):
@@ -245,6 +314,8 @@ def _add_tree_entry(digest: Any, resolved_root: Path, root: Path, path: Path) ->
         _record(digest, b"directory", path_bytes, mode, b"")
         return
     if stat.S_ISLNK(metadata.st_mode):
+        # Symlink modes differ between Linux (777) and macOS (umask-dependent); only the target matters.
+        mode = 0o777
         if metadata.st_uid != os.geteuid():
             raise LockError(f"installed tree entry has wrong ownership: {relative}")
         _add_symlink(digest, resolved_root, path, path_bytes, mode)
@@ -308,6 +379,7 @@ def main() -> int:
     parser.add_argument("lock", type=Path)
     parser.add_argument("tool", choices=("java", "maven"))
     parser.add_argument("--require-locked", action="store_true")
+    parser.add_argument("--platform", choices=PLATFORM_KEYS)
     tree_action = parser.add_mutually_exclusive_group()
     tree_action.add_argument("--verify-tree", type=Path)
     tree_action.add_argument("--print-tree-digest", type=Path)
@@ -316,7 +388,7 @@ def main() -> int:
     arguments = parser.parse_args()
     try:
         document = _load(arguments.lock)
-        toolchain = _select(document, arguments.tool, arguments.require_locked)
+        toolchain = _select(document, arguments.tool, arguments.require_locked, arguments.platform)
         if arguments.verify_tree is not None:
             _verify_tree(toolchain, arguments.verify_tree)
         if arguments.print_tree_digest is not None:

@@ -31,23 +31,19 @@ public final class ProjectMutationRunner {
         }
     }
 
-    private static List<ProductionSource> targets(
-            List<ProductionSource> sources, Set<String> requested) {
+    /** The inventory (in order) narrowed to {@code requested}; every requested path must be inventoried. */
+    static List<ProductionSource> targets(List<ProductionSource> sources, Set<String> requested) {
         if (requested == null) {
             return sources;
-        }
-        Set<String> inventoried = new HashSet<>();
-        for (ProductionSource source : sources) {
-            inventoried.add(source.relativePath());
-        }
-        if (requested.isEmpty() || !inventoried.containsAll(requested)) {
-            throw new IllegalArgumentException("mutationTargetInvalid");
         }
         List<ProductionSource> selected = new ArrayList<>();
         for (ProductionSource source : sources) {
             if (requested.contains(source.relativePath())) {
                 selected.add(source);
             }
+        }
+        if (requested.isEmpty() || selected.size() != requested.size()) {
+            throw new IllegalArgumentException("mutationTargetInvalid");
         }
         return List.copyOf(selected);
     }
@@ -234,7 +230,8 @@ public final class ProjectMutationRunner {
     }
 
     private static Path eventDirectory() throws IOException {
-        Path result = Files.createTempDirectory("sentinel-java-events-");
+        // macOS keeps temporary files under a symlinked /var; runners compare real paths.
+        Path result = Files.createTempDirectory("sentinel-java-events-").toRealPath();
         Files.setPosixFilePermissions(
                 result, PosixFilePermissions.fromString("rwx------"));
         return result;

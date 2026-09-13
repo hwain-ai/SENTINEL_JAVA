@@ -43,13 +43,18 @@ public final class CrapGate {
                 sources, dependencyClasspath);
         JacocoCoverage.Report report = JacocoCoverage.parse(coverageXml);
         List<Models.CallableMetric> metrics = JacocoCoverage.measure(definitions, report, crapMax);
-        if (onlyPaths != null) {
-            metrics = metrics.stream()
-                    .filter(metric -> onlyPaths.contains(
-                            metric.callable().identity().moduleRelativePath()))
-                    .toList();
+        return result(onlyPaths == null ? metrics : judged(metrics, onlyPaths));
+    }
+
+    private static List<Models.CallableMetric> judged(
+            List<Models.CallableMetric> metrics, Set<String> onlyPaths) {
+        List<Models.CallableMetric> judged = new ArrayList<>();
+        for (Models.CallableMetric metric : metrics) {
+            if (onlyPaths.contains(metric.callable().identity().moduleRelativePath())) {
+                judged.add(metric);
+            }
         }
-        return result(metrics);
+        return List.copyOf(judged);
     }
 
     private static Result result(List<Models.CallableMetric> metrics) {

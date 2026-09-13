@@ -26,7 +26,8 @@ final class PitProbeWorkspace implements AutoCloseable {
 
     static PitProbeWorkspace create(Map<String, byte[]> sources, long deadline)
             throws IOException, InterruptedException {
-        Path root = Files.createTempDirectory("sentinel-java-pit-");
+        // macOS keeps temporary files under a symlinked /var; probe files compare real paths.
+        Path root = Files.createTempDirectory("sentinel-java-pit-").toRealPath();
         Files.setPosixFilePermissions(root, PosixFilePermissions.fromString("rwx------"));
         PitProbeWorkspace workspace = new PitProbeWorkspace(root, sources);
         try {

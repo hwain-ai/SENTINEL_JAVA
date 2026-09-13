@@ -24,14 +24,6 @@ class BackendBootstrapTest {
                 ".toolchain/backends/mutate4java-7b05fdd.jar")));
     }
 
-    @Test
-    void rejectsExplicitBashInvocation() throws Exception {
-        Result result = run("/usr/bin/bash", "scripts/bootstrap-backends.sh");
-
-        assertEquals(2, result.exitCode());
-        assertTrue(result.output().contains("script must be executed directly"));
-    }
-
     private static Result run(String... command) throws Exception {
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

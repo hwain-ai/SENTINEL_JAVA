@@ -28,7 +28,8 @@ final class ProjectSnapshot implements AutoCloseable {
     }
 
     static ProjectSnapshot create(Path sourceRoot) throws IOException {
-        Path container = Files.createTempDirectory("sentinel-java-mutation-");
+        // macOS keeps temporary files under a symlinked /var; runners compare real paths.
+        Path container = Files.createTempDirectory("sentinel-java-mutation-").toRealPath();
         Files.setPosixFilePermissions(
                 container, PosixFilePermissions.fromString("rwx------"));
         Path destination = container.resolve("project");
