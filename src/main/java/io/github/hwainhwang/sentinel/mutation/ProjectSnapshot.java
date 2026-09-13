@@ -15,7 +15,10 @@ import java.util.Set;
 /** Disposable regular-file-only copy that keeps all backend writes away from user sources. */
 final class ProjectSnapshot implements AutoCloseable {
     private static final Set<String> EXCLUDED = Set.of(
-            ".git", ".sentinel", ".toolchain", "target", "build", "out");
+            ".git", ".sentinel", ".sentinel-m2", ".sentinel-tools", ".toolchain", "target", "build", "out");
+    // SENTINEL-owned files next to the POM never enter the build tree, so the project's own audits see its original tree.
+    private static final Set<String> EXCLUDED_FILES = Set.of(
+            "sentinel.workspace.json", "sentinel.config.json");
     private final Path container;
     private final Path root;
 
@@ -63,6 +66,9 @@ final class ProjectSnapshot implements AutoCloseable {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
                     throws IOException {
+                if (excludedFile(sourceRoot.relativize(file))) {
+                    return FileVisitResult.CONTINUE;
+                }
                 rejectFile(file, attributes);
                 Files.copy(
                         file,
@@ -71,6 +77,11 @@ final class ProjectSnapshot implements AutoCloseable {
                 return FileVisitResult.CONTINUE;
             }
         });
+    }
+
+    private static boolean excludedFile(Path relative) {
+        return relative.getNameCount() == 1
+                && EXCLUDED_FILES.contains(relative.getFileName().toString());
     }
 
     private static boolean excluded(Path relative) {

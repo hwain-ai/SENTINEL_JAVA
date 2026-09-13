@@ -30,7 +30,9 @@ STATUS_BY_EXIT = {
 }
 IDENTITY_KEYS = ("protocolVersion", "requestId", "command", "moduleId", "language")
 # Same exclusions as ProjectSnapshot and ProductionInventory in the checker.
-EXCLUDED_DIRECTORIES = {".git", ".sentinel", ".toolchain", "target", "build", "out", ".sentinel-tools"}
+EXCLUDED_DIRECTORIES = {".git", ".sentinel", ".toolchain", "target", "build", "out", ".sentinel-tools", ".sentinel-m2"}
+# Offline Maven repository that `scripts/mvn.sh deps` warms inside the project.
+PROJECT_REPOSITORY = ".sentinel-m2"
 MUTATION_TIMEOUT_MILLIS = "600000"
 CLI_PACKAGE = "io.github.hwainhwang.sentinel.cli"
 
@@ -65,8 +67,18 @@ def production_sources(root: Path) -> list:
     return sorted(found)
 
 
+# SENTINEL-owned files next to the POM; they never enter a build tree so the project's own audits see its original tree.
+SENTINEL_FILES = {"sentinel.workspace.json", "sentinel.config.json"}
+
+
 def copy_project(root: Path, destination: Path) -> None:
-    shutil.copytree(root, destination, ignore=lambda _directory, names: [n for n in names if n in EXCLUDED_DIRECTORIES], symlinks=False)
+    def ignore(directory, names):
+        skipped = [n for n in names if n in EXCLUDED_DIRECTORIES]
+        if Path(directory) == root:
+            skipped += [n for n in names if n in SENTINEL_FILES]
+        return skipped
+
+    shutil.copytree(root, destination, ignore=ignore, symlinks=False)
 
 
 def environment(locks: dict, home_directory: Path) -> dict:
@@ -88,11 +100,16 @@ def run(command: list, cwd: Path, env: dict, log) -> int:
         return 5
 
 
-def crap_gate(locks: dict, snapshot: Path, env: dict, log, crap_max, only) -> int:
+def maven_repository(locks: dict, project_root: Path) -> Path:
+    project_repository = project_root / PROJECT_REPOSITORY
+    return project_repository if project_repository.is_dir() else locks["repository"]
+
+
+def crap_gate(locks: dict, repository: Path, snapshot: Path, env: dict, log, crap_max, only) -> int:
     java = str(locks["java_home"] / "bin" / "java")
     mvn = str(locks["maven_home"] / "bin" / "mvn")
     agent = f"-javaagent:{locks['agent']}=destfile=target/jacoco.exec,append=false"
-    if run([mvn, "-o", "-B", "-ntp", f"-Dmaven.repo.local={locks['repository']}", f"-DargLine={agent}", "test"], snapshot, env, log) != 0:
+    if run([mvn, "-o", "-B", "-ntp", f"-Dmaven.repo.local={repository}", f"-DargLine={agent}", "test"], snapshot, env, log) != 0:
         return 1
     if not (snapshot / "target" / "jacoco.exec").is_file():
         return 1
@@ -101,7 +118,7 @@ def crap_gate(locks: dict, snapshot: Path, env: dict, log, crap_max, only) -> in
               "--classfiles", "target/classes", "--sourcefiles", "src/main/java", "--encoding", "UTF-8", "--xml", str(xml)]
     if run(report, snapshot, env, log) != 0:
         return 1
-    classpath = sorted(str(path) for path in locks["repository"].rglob("*.jar"))
+    classpath = sorted(str(path) for path in repository.rglob("*.jar"))
     command = [java, "-cp", str(locks["classes"]), f"{CLI_PACKAGE}.SelfCrapMain"]
     if crap_max is not None:
         command += ["--crap-max", str(crap_max)]
@@ -111,12 +128,12 @@ def crap_gate(locks: dict, snapshot: Path, env: dict, log, crap_max, only) -> in
     return run(command, snapshot, env, log)
 
 
-def mutation_gate(locks: dict, project_root: Path, inventory: Path, env: dict, log, mutation_min, targets) -> int:
+def mutation_gate(locks: dict, repository: Path, project_root: Path, inventory: Path, env: dict, log, mutation_min, targets) -> int:
     java = str(locks["java_home"] / "bin" / "java")
     command = [java, "-cp", str(locks["classes"]), f"{CLI_PACKAGE}.MutationCommandMain",
                "--project", str(project_root), "--inventory", str(inventory),
                "--backend", str(locks["mutation_jar"]), "--java-home", str(locks["java_home"]),
-               "--maven-home", str(locks["maven_home"]), "--maven-repository", str(locks["repository"]),
+               "--maven-home", str(locks["maven_home"]), "--maven-repository", str(repository),
                "--listener", str(locks["classes"]), "--timeout-millis", MUTATION_TIMEOUT_MILLIS]
     if mutation_min is not None:
         command += ["--mutation-min", str(mutation_min)]
@@ -166,6 +183,7 @@ def main() -> int:
         locks = load_locks(home)
     except (OSError, KeyError, ValueError):
         return finish(5)
+    repository = maven_repository(locks, project_root)
     with tempfile.TemporaryDirectory(prefix="sentinel-tool-java-") as directory:
         work = Path(directory)
         sources = production_sources(project_root)
@@ -186,8 +204,8 @@ def main() -> int:
         home_directory.mkdir(mode=0o700)
         env = environment(locks, home_directory)
         with open(work / "checker.log", "wb") as log:
-            crap_exit = crap_gate(locks, snapshot, env, log, gate.get("crapMax"), targets)
-            mutation_exit = mutation_gate(locks, project_root, inventory, env, log, gate.get("mutationMin"), targets)
+            crap_exit = crap_gate(locks, repository, snapshot, env, log, gate.get("crapMax"), targets)
+            mutation_exit = mutation_gate(locks, repository, project_root, inventory, env, log, gate.get("mutationMin"), targets)
     return finish(combined(crap_exit, mutation_exit))
 
 

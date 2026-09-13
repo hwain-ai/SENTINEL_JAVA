@@ -16,6 +16,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
@@ -110,14 +111,26 @@ class SentinelTestExecutionListenerIntegrationTest {
     }
 
     @Test
-    void refusesSkippedAbortedAndDynamicMethodContainers() throws Exception {
+    void acceptsDisabledTestsAndDisabledNestedClassesAsInventoriedSkips() throws Exception {
+        var summary = execute(Mode.PASS, "a1".repeat(16), DisabledMethodFixture.class);
+        assertEquals(ExecutionStatus.PASSED, summary.execution().status());
+        var nested = execute(Mode.PASS, "a2".repeat(16), DisabledNestedFixture.class);
+        assertEquals(ExecutionStatus.PASSED, nested.execution().status());
+        assertNotEquals(summary.execution().inventorySha256(), nested.execution().inventorySha256());
+        var allSkipped = execute(Mode.PASS, "a3".repeat(16), AllDisabledFixture.class);
+        assertEquals(ExecutionStatus.TOOL_ERROR, allSkipped.execution().status());
+    }
+
+    @Test
+    void admitsDisabledParameterizedAndDynamicMethodContainersButRefusesAbortedOnes() throws Exception {
         int nonce = 16;
         for (Class<?> fixture : java.util.List.of(DisabledFactoryFixture.class,
-                DisabledTemplateFixture.class, AbortedFactoryFixture.class, DynamicFactoryFixture.class)) {
+                DisabledTemplateFixture.class, DynamicFactoryFixture.class, ParameterizedFixture.class)) {
             var summary = execute(Mode.PASS, Integer.toHexString(nonce++).repeat(16), fixture);
-            assertNotEquals(ExecutionStatus.PASSED, summary.execution().status(), fixture.getName());
-            assertNotEquals(ExecutionStatus.ASSERTION_FAILURE, summary.execution().status(), fixture.getName());
+            assertEquals(ExecutionStatus.PASSED, summary.execution().status(), fixture.getName());
         }
+        var aborted = execute(Mode.PASS, Integer.toHexString(nonce).repeat(16), AbortedFactoryFixture.class);
+        assertEquals(ExecutionStatus.RUNTIME_ERROR, aborted.execution().status());
     }
 
     @Test
@@ -241,6 +254,22 @@ class SentinelTestExecutionListenerIntegrationTest {
 
     static class InheritedFixture extends InheritedBase { }
 
+    static class DisabledMethodFixture {
+        @Test void passes() { }
+        @Disabled @Test void skipped() { }
+    }
+
+    static class DisabledNestedFixture {
+        @Test void passes() { }
+        @Disabled @Nested class Inner {
+            @Test void skipped() { }
+        }
+    }
+
+    static class AllDisabledFixture {
+        @Disabled @Test void skipped() { }
+    }
+
     static class DisabledFactoryFixture {
         @Test void ordinary() { }
         @Disabled @TestFactory java.util.List<DynamicTest> skipped() { return java.util.List.of(); }
@@ -254,6 +283,11 @@ class SentinelTestExecutionListenerIntegrationTest {
     static class AbortedFactoryFixture {
         @Test void ordinary() { }
         @TestFactory java.util.List<DynamicTest> aborted() { assumeTrue(false); return java.util.List.of(); }
+    }
+
+    static class ParameterizedFixture {
+        @Test void ordinary() { }
+        @ParameterizedTest @ValueSource(ints = {1, 2}) void parameterized(int value) { }
     }
 
     static class DynamicFactoryFixture {

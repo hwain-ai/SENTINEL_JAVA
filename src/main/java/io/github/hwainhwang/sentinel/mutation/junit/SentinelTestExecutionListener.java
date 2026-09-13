@@ -21,9 +21,13 @@ import org.opentest4j.MultipleFailuresError;
 /** Opt-in JUnit Platform listener that emits one typed, machine-readable execution summary. */
 public final class SentinelTestExecutionListener implements TestExecutionListener {
     private JUnitRequest request;
+    private TestPlan plan;
     private final Set<String> expected = new HashSet<>();
     private final Map<String, Integer> starts = new HashMap<>();
     private final Map<String, Integer> finishes = new HashMap<>();
+    // Tests JUnit skipped (disabled or conditionally excluded): they never start, and every run
+    // must skip the same set, so they are part of the inventory instead of a failure.
+    private final Map<String, Integer> skipped = new HashMap<>();
     private final List<Failure> assertionFailures = new ArrayList<>();
     private final List<String> results = new ArrayList<>();
     private boolean runtimeFailure;
@@ -39,6 +43,7 @@ public final class SentinelTestExecutionListener implements TestExecutionListene
         if (request == null) {
             return;
         }
+        plan = testPlan;
         collectExpected(testPlan);
     }
 
@@ -52,20 +57,35 @@ public final class SentinelTestExecutionListener implements TestExecutionListene
     }
 
     private void addIfTest(TestIdentifier identifier) {
-        // This evidence profile admits ordinary method tests, not runtime-generated method containers.
-        if (identifier.isContainer() && identifier.getSource().orElse(null) instanceof MethodSource) {
-            runtimeFailure = true;
-        }
         if (identifier.isTest() && !expected.add(identifier.getUniqueId())) {
             runtimeFailure = true;
         }
     }
 
     @Override
-    public synchronized void executionSkipped(TestIdentifier identifier, String reason) {
+    public synchronized void dynamicTestRegistered(TestIdentifier identifier) {
+        // Parameterized and dynamic tests register after the plan starts; their ids join the inventory,
+        // so both control runs must generate the same set.
         if (request != null) {
-            runtimeFailure = true;
-            results.add(MutationHash.digest("sentinel-java-test-result-v1", List.of(identifier.getUniqueId(), "SKIPPED")));
+            addIfTest(identifier);
+        }
+    }
+
+    @Override
+    public synchronized void executionSkipped(TestIdentifier identifier, String reason) {
+        if (request == null) {
+            return;
+        }
+        results.add(MutationHash.digest("sentinel-java-test-result-v1", List.of(identifier.getUniqueId(), "SKIPPED")));
+        if (identifier.isTest()) {
+            increment(skipped, identifier.getUniqueId());
+            return;
+        }
+        // A skipped container (a disabled class) silently skips every test under it.
+        for (TestIdentifier descendant : plan.getDescendants(identifier)) {
+            if (descendant.isTest()) {
+                increment(skipped, descendant.getUniqueId());
+            }
         }
     }
 
@@ -232,10 +252,12 @@ public final class SentinelTestExecutionListener implements TestExecutionListene
     }
 
     private Summary summary() {
-        boolean retry = repeated(starts) || repeated(finishes);
+        boolean retry = repeated(starts) || repeated(finishes) || repeated(skipped);
         boolean incomplete = expected.isEmpty()
-                || !expected.equals(starts.keySet())
-                || !expected.equals(finishes.keySet());
+                || starts.isEmpty()
+                || !expected.equals(union(starts.keySet(), skipped.keySet()))
+                || !expected.equals(union(finishes.keySet(), skipped.keySet()))
+                || !Collections.disjoint(starts.keySet(), skipped.keySet());
         ExecutionStatus status = aggregateStatus(incomplete || retry);
         return new Summary(status, retry, failureTestId(status), assertionType(status), signature(status));
     }
@@ -251,6 +273,12 @@ public final class SentinelTestExecutionListener implements TestExecutionListene
             return ExecutionStatus.ASSERTION_FAILURE;
         }
         return ExecutionStatus.PASSED;
+    }
+
+    private static Set<String> union(Set<String> first, Set<String> second) {
+        Set<String> values = new HashSet<>(first);
+        values.addAll(second);
+        return values;
     }
 
     private static boolean repeated(Map<String, Integer> counts) {
@@ -303,6 +331,11 @@ public final class SentinelTestExecutionListener implements TestExecutionListene
     private void writeSummary(Summary summary) throws IOException {
         List<String> ids = new ArrayList<>(expected);
         Collections.sort(ids);
+        List<String> skippedIds = new ArrayList<>(skipped.keySet());
+        Collections.sort(skippedIds);
+        for (String id : skippedIds) {
+            ids.add("skipped\n" + id);
+        }
         String inventory = MutationHash.digest("sentinel-java-test-inventory-v1", ids);
         var execution = new io.github.hwainhwang.sentinel.mutation.TestExecution(
                 summary.status(),
