@@ -16,6 +16,9 @@ arm64) with the host's Python 3.9+ and the standard library only.
     scripts/toolchain.py paths                 JSON with the resolved JAVA_HOME, MAVEN_HOME and repository
     scripts/toolchain.py platform              print the detected platform key
     scripts/toolchain.py describe PLATFORM     (maintenance) lock fields for another platform's JDK archive
+    scripts/toolchain.py self-crap             the checker's own CRAP gate: full test run with JaCoCo, then SelfCrapMain
+    scripts/toolchain.py self-mutation-slice   the checker's own mutation proof: one mutant, two typed replays
+    scripts/toolchain.py typed-test ...        the per-mutant test command the mutation slice hands to mutate4java
 
 Every child process gets a minimal environment: no inherited variables, a
 private HOME under .toolchain, and PATH limited to the locked tools.
@@ -64,7 +67,25 @@ CHILD_UMASK = 0o022
 MAVEN_FLAGS = {"-o", "--offline", "-B", "--batch-mode", "-ntp", "--no-transfer-progress", "-q", "--quiet", "-e", "--errors", "-V", "--show-version", "-v", "--version"}
 MAVEN_PHASES = {"clean", "compile", "test", "package", "verify"}
 TEST_SELECTOR = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*(,[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*)*$")
-USAGE = "usage: toolchain.py {bootstrap|backends|m2|pit-probe|setup|mvn|java|deps|doctor|paths|platform|describe} ..."
+SINGLE_SELECTOR = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*$")
+USAGE = ("usage: toolchain.py {bootstrap|backends|m2|pit-probe|setup|mvn|java|deps|doctor|paths|platform|describe"
+         "|self-crap|self-mutation-slice|typed-test} ...")
+# The checker's own quality checks: the JUnit platform jars SelfCrapMain analyzes against, and the one
+# mutant the mutation slice proves (ExactCrap.decimal() replaced by null must be killed twice).
+JUNIT_PLATFORM_JARS = (
+    "org/junit/platform/junit-platform-launcher/1.10.2/junit-platform-launcher-1.10.2.jar",
+    "org/junit/platform/junit-platform-engine/1.10.2/junit-platform-engine-1.10.2.jar",
+    "org/junit/platform/junit-platform-commons/1.10.2/junit-platform-commons-1.10.2.jar",
+    "org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar",
+)
+SELF_SOURCE = "src/main/java/io/github/hwainhwang/sentinel/crap/ExactCrap.java"
+SELF_SELECTOR = "io.github.hwainhwang.sentinel.crap.ExactCrapTest"
+SELF_LINE = 64
+SELF_KILL = f"KILLED {SELF_SOURCE}:{SELF_LINE} replace decimal with null"
+SELF_SUMMARY = "Summary: 1 killed, 0 survived, 1 total."
+# mutate4java runs the test command through `/bin/sh -lc`; every path in it must be shell-inert.
+SHELL_INERT_PATH = re.compile(r"^/[A-Za-z0-9._/@+-]+$")
+CLI_PACKAGE = "io.github.hwainhwang.sentinel.cli"
 
 
 class ToolchainError(RuntimeError):
@@ -321,10 +342,12 @@ class Installation:
         if observed != self.maven["versionOutput"]:
             raise fail(f"maven version output mismatch: expected {self.maven['versionOutput']!r}, got {observed!r}")
 
-    def run(self, argv: Sequence[str], cwd: Path = REPOSITORY_ROOT, quiet: bool = False) -> int:
+    def run(self, argv: Sequence[str], cwd: Path = REPOSITORY_ROOT, quiet: bool = False,
+            stdout: Any = None, umask: Optional[int] = None) -> int:
         completed = subprocess.run(
             list(argv), cwd=str(cwd), env=self.environment, check=False,
-            stdout=subprocess.DEVNULL if quiet else None,
+            stdout=subprocess.DEVNULL if quiet else stdout,
+            preexec_fn=None if umask is None else lambda: os.umask(umask),
         )
         return completed.returncode
 
@@ -542,8 +565,9 @@ def command_deps(arguments: List[str]) -> int:
         shutil.rmtree(build, ignore_errors=True)
 
 
-def command_doctor() -> int:
-    installation = Installation()
+def _doctor_report(installation: Installation) -> Dict[str, Any]:
+    """Verify every backend file against its lock and describe the installation."""
+
     document = _backend_document()
     artifacts = document["artifacts"]
     mutation = document["mutationBackend"]
@@ -551,7 +575,7 @@ def command_doctor() -> int:
         _verify_backend_file(artifacts[name], BACKENDS_ROOT / artifacts[name]["fileName"])
     _verify_backend_file(mutation["sourceArchive"], BACKENDS_ROOT / mutation["sourceArchive"]["fileName"])
     _verify_backend_file(mutation["runtime"], BACKENDS_ROOT / mutation["runtime"]["fileName"])
-    print(json.dumps({
+    return {
         "schemaVersion": "sentinel-java-doctor-v1",
         "passed": True,
         "platform": installation.java["platform"],
@@ -565,7 +589,11 @@ def command_doctor() -> int:
         "mutate4javaSourceArchiveSha256": mutation["sourceArchive"]["sha256"],
         "mutate4javaJarSha256": mutation["runtime"]["sha256"],
         "mutationBackendStatus": mutation["status"],
-    }, separators=(",", ":")))
+    }
+
+
+def command_doctor() -> int:
+    print(json.dumps(_doctor_report(Installation()), separators=(",", ":")))
     return 0
 
 
@@ -612,6 +640,193 @@ def command_describe(key: str) -> int:
     return 0
 
 
+# ------------------------------------------------------------ self checks
+
+def _attempt_directory(name: str) -> Path:
+    """A fresh private attempt folder under .toolchain/<name>/ (earlier attempts are kept)."""
+
+    runs = TOOLCHAIN_ROOT / name
+    _private_directory(runs)
+    try:
+        toolchain_lock._verify_private_directory(runs)
+    except toolchain_lock.LockError as error:
+        raise fail(f"private directory .toolchain/{name}: {error}") from error
+    return Path(tempfile.mkdtemp(prefix="attempt.", dir=runs))
+
+
+def _set_aside_target(attempt: Path) -> None:
+    """Move an existing build output aside so the run measures fresh JaCoCo data."""
+
+    target = REPOSITORY_ROOT / "target"
+    if not target.exists() and not target.is_symlink():
+        return
+    if target.is_symlink() or not target.is_dir():
+        raise fail("target must be a directory")
+    os.rename(target, attempt / "prior-target")
+
+
+def _maven_offline(installation: Installation, *arguments: str) -> List[str]:
+    return [str(installation.maven_binary), "-o", "-B", "-ntp", f"-Dmaven.repo.local={M2_ROOT}", *arguments]
+
+
+def _cli(installation: Installation, main_class: str, *arguments: str, classes: Path = REPOSITORY_ROOT / "target" / "classes") -> List[str]:
+    return [str(installation.java_binary), "-cp", str(classes), f"{CLI_PACKAGE}.{main_class}", *arguments]
+
+
+def command_self_crap() -> int:
+    """Full test run under the JaCoCo agent, XML report, then SelfCrapMain over the checker's own sources."""
+
+    installation = Installation(check_version=True)
+    jars = backends(installation)
+    pit_probe()
+    attempt = _attempt_directory("self-crap-runs")
+    _set_aside_target(attempt)
+    # Build output stays world-readable as scripts/mvn.sh makes it; Maven's own output goes to stderr so
+    # stdout carries only the gate's JSON line.
+    if installation.run(_maven_offline(installation, "test"), stdout=sys.stderr, umask=CHILD_UMASK) != 0:
+        raise fail("self-crap: the test run failed")
+    execution = REPOSITORY_ROOT / "target" / "jacoco.exec"
+    if not execution.is_file() or execution.stat().st_size == 0:
+        raise fail("self-crap: fresh JaCoCo execution data is missing")
+    report = REPOSITORY_ROOT / "target" / "site" / "jacoco" / "jacoco.xml"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    jacoco = [str(installation.java_binary), "-jar", str(jars["jacoco-cli"]), "--quiet", "report", str(execution),
+              "--classfiles", "target/classes", "--sourcefiles", "src/main/java", "--encoding", "UTF-8", "--xml", str(report)]
+    if installation.run(jacoco, stdout=sys.stderr, umask=CHILD_UMASK) != 0:
+        raise fail("self-crap: the JaCoCo report failed")
+    dependencies = [str(M2_ROOT / relative) for relative in JUNIT_PLATFORM_JARS]
+    return installation.run(_cli(installation, "SelfCrapMain", str(REPOSITORY_ROOT), "src/main/java",
+                                 "target/site/jacoco/jacoco.xml", *dependencies))
+
+
+def _typed_test_arguments(arguments: List[str]) -> tuple:
+    if len(arguments) not in (3, 4) or (len(arguments) == 4 and arguments[3] != "--retain-proof-key"):
+        raise fail("usage: toolchain.py typed-test SELECTOR SOURCE EVIDENCE [--retain-proof-key]")
+    if not SINGLE_SELECTOR.match(arguments[0]):
+        raise fail("typed test selector is invalid")
+    return arguments[0], arguments[1], Path(arguments[2]), len(arguments) == 4
+
+
+def command_typed_test(arguments: List[str]) -> int:
+    """One `mvn -Dtest=SELECTOR test` in the current project with the typed JUnit listener, then evidence validation.
+
+    mutate4java runs this once per mutant from the snapshot it mutates. Exit 0 means the tests passed
+    (mutant survived); any other exit means killed; 4 means the typed evidence was missing or invalid.
+    """
+
+    import junit_request  # noqa: E402  (a sibling script; imported here to keep the launcher's import cost low)
+
+    selector, source, evidence, retain_key = _typed_test_arguments(arguments)
+    project = Path.cwd().resolve()
+    pom = project / "pom.xml"
+    if pom.is_symlink() or not pom.is_file() or (project / ".mvn").exists() or (project / ".mvn").is_symlink():
+        raise fail("typed test project root is invalid")
+    installation = Installation()
+    agent = _backend_document()["artifacts"]["jacoco-agent"]
+    _verify_backend_file(agent, project / ".toolchain" / "backends" / agent["fileName"])
+    try:
+        nonce, source_sha256, event_file, hmac_key = junit_request.write_request(project, source, evidence, retain_key)
+    except junit_request.RequestError as error:
+        raise fail(f"typed test request: {error}") from error
+    try:
+        test_exit = installation.run(_maven_offline(installation, f"-Dtest={selector}", "test"), cwd=project)
+        validate = _cli(installation, "JUnitEventValidateMain", str(event_file), nonce, source_sha256, hmac_key,
+                        classes=project / "target" / "classes")
+        if installation.run(validate, cwd=project) != 0:
+            print("typed test error: typed JUnit evidence missing or invalid", file=sys.stderr)
+            return 4
+        return test_exit
+    finally:
+        (project / "target" / "sentinel-junit-request-v1").unlink(missing_ok=True)
+
+
+def _shell_inert(path: Path, label: str) -> Path:
+    if not SHELL_INERT_PATH.match(str(path)):
+        raise fail(f"{label} path is unsafe for the mutation backend's shell bridge: {path}")
+    return path
+
+
+def _prepare_snapshot(snapshot: Path, agent: Path, original_sha256: str) -> None:
+    """A private copy of pom.xml, backend.lock.json and src plus the JaCoCo agent the pom's argLine names."""
+
+    snapshot.mkdir(mode=0o700, parents=True)
+    for name in ("pom.xml", "backend.lock.json"):
+        shutil.copy2(REPOSITORY_ROOT / name, snapshot / name)
+    shutil.copytree(REPOSITORY_ROOT / "src", snapshot / "src", symlinks=False, copy_function=shutil.copy2)
+    backends_copy = snapshot / ".toolchain" / "backends"
+    backends_copy.mkdir(mode=0o700, parents=True)
+    shutil.copyfile(agent, backends_copy / agent.name)
+    os.chmod(backends_copy / agent.name, 0o600)
+    if _sha256_file(snapshot / SELF_SOURCE) != original_sha256:
+        raise fail("self mutation: snapshot source mismatch")
+
+
+def _replay(installation: Installation, jars: Dict[str, Path], attempt: Path, label: str, typed_command: str,
+            original_sha256: str) -> None:
+    """One mutate4java run over the single mutant; its output must show exactly that mutant killed."""
+
+    run_root = attempt / label
+    run_root.mkdir(mode=0o700)
+    snapshot = run_root / "snapshot"
+    _prepare_snapshot(snapshot, jars["jacoco-agent"], original_sha256)
+    argv = [str(installation.java_binary), "-jar", str(jars["mutate4java"]), SELF_SOURCE,
+            "--lines", str(SELF_LINE), "--max-workers", "1", "--test-command", typed_command]
+    with open(run_root / "raw.txt", "wb") as raw, open(run_root / "error.txt", "wb") as error:
+        completed = subprocess.run(argv, cwd=str(snapshot), env=installation.environment, stdout=raw, stderr=error, check=False)
+    if completed.returncode != 0:
+        raise fail(f"self mutation: upstream replay {label} failed with {completed.returncode}")
+    text = (run_root / "raw.txt").read_text(encoding="utf-8", errors="replace")
+    if SELF_KILL not in text or SELF_SUMMARY not in text:
+        raise fail(f"self mutation: upstream replay {label} did not kill the expected mutant")
+
+
+def _proof_arguments(evidence: Path, original_sha256: str) -> tuple:
+    """(MutationProofMain arguments, key files to remove) from the four typed events the replays left."""
+
+    events = sorted(path for path in evidence.glob("*.json") if path.is_file() and not path.is_symlink())
+    if len(events) != 4:
+        raise fail(f"self mutation: expected 4 typed events, found {len(events)}")
+    arguments, keys = [original_sha256], []
+    for event in events:
+        key_file = event.with_suffix(".key")
+        if key_file.is_symlink() or not key_file.is_file():
+            raise fail("self mutation: authenticated event key missing")
+        hmac_key = key_file.read_text(encoding="ascii").strip()
+        if not re.fullmatch(r"[0-9a-f]{64}", hmac_key):
+            raise fail("self mutation: authenticated event key invalid")
+        arguments += [str(event), hmac_key]
+        keys.append(key_file)
+    return arguments, keys
+
+
+def command_self_mutation_slice() -> int:
+    """Two independent mutate4java replays of one mutant, each proven by typed JUnit events, then MutationProofMain."""
+
+    _shell_inert(REPOSITORY_ROOT, "repository")
+    python = _shell_inert(Path(sys.executable).resolve(), "interpreter")
+    installation = Installation(check_version=True)
+    jars = backends(installation)
+    _doctor_report(installation)
+    if installation.run(_maven_offline(installation, "-q", "compile"), umask=CHILD_UMASK) != 0:
+        raise fail("self mutation: offline compile failed")
+    original_sha256 = _sha256_file(REPOSITORY_ROOT / SELF_SOURCE)
+    attempt = _attempt_directory("self-mutation-runs")
+    evidence = _shell_inert(attempt / "evidence", "evidence")
+    evidence.mkdir(mode=0o700)
+    typed_command = (f"{python} -I -B {REPOSITORY_ROOT / 'scripts' / 'toolchain.py'} typed-test "
+                     f"{SELF_SELECTOR} {SELF_SOURCE} {evidence} --retain-proof-key")
+    for label in ("run-a", "run-b"):
+        _replay(installation, jars, attempt, label, typed_command, original_sha256)
+    if _sha256_file(REPOSITORY_ROOT / SELF_SOURCE) != original_sha256:
+        raise fail("self mutation: protected source changed")
+    arguments, keys = _proof_arguments(evidence, original_sha256)
+    try:
+        return installation.run(_cli(installation, "MutationProofMain", *arguments))
+    finally:
+        for key_file in keys:
+            key_file.unlink(missing_ok=True)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if not arguments:
@@ -626,6 +841,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "setup": command_setup,
         "doctor": command_doctor,
         "paths": command_paths,
+        "self-crap": command_self_crap,
+        "self-mutation-slice": command_self_mutation_slice,
     }
     if mode in simple:
         return simple[mode]()
@@ -638,6 +855,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return command_java(rest)
     if mode == "deps":
         return command_deps(rest)
+    if mode == "typed-test":
+        return command_typed_test(rest)
     if mode == "describe":
         if len(rest) != 1:
             raise fail("usage: toolchain.py describe PLATFORM")

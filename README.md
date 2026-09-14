@@ -28,8 +28,10 @@ Linux(x86_64, arm64)와 macOS(Intel, Apple Silicon)를 지원합니다. Windows 
 macOS 의 JDK 17 에는 디렉터리 핸들 기준 파일 열기(SecureDirectoryStream)가 없어, JUnit 이벤트 파일은 조상 폴더가
 전부 실제 폴더인지 확인한 직후 배타적으로(CREATE_NEW, 링크 따라가지 않음) 만듭니다. Linux 에서는 핸들 경로를 씁니다.
 
-검사기 자체 품질 점검 스크립트(`scripts/self-crap.sh`, `scripts/self-mutation-slice.sh`,
-`scripts/typed-mvn-test.sh`)는 아직 Linux 전용 bash 입니다. 사용자가 프로젝트를 검사하는 경로에는 쓰이지 않습니다.
+검사기 자체 품질 점검도 같은 실행기의 명령입니다. `scripts/toolchain.py self-crap` 은 전체 시험을 JaCoCo 와 함께
+돌린 뒤 검사기 자신의 모든 함수에 CRAP 게이트를 적용하고, `scripts/toolchain.py self-mutation-slice` 는
+ExactCrap.java 의 변이 하나를 mutate4java 로 두 번 되풀이해 typed JUnit 증거로 잡히는지 증명합니다. 두 명령은
+CI 가 네 플랫폼에서 돌립니다. 이전의 bash 스크립트(self-crap.sh, self-mutation-slice.sh, typed-mvn-test.sh)는 없앴습니다.
 
 ## 핵심 규칙
 
@@ -46,6 +48,8 @@ macOS 의 JDK 17 에는 디렉터리 핸들 기준 파일 열기(SecureDirectory
 ```text
 sentinel-tool/setup.sh
 scripts/mvn.sh -o test
+python3 -I -B scripts/toolchain.py self-crap
+python3 -I -B scripts/toolchain.py self-mutation-slice
 ```
 
 `sentinel-tool/setup.sh`(`python3 -I -B scripts/toolchain.py setup` 과 같음)는 JDK·Maven·백엔드·오프라인 Maven 저장소·컴파일·doctor 를 차례로 준비합니다. 현재 Temurin JDK 17.0.20.1+1과 Maven 3.9.16은 archive, 실행 파일, 설치 tree digest까지 네 플랫폼 모두 잠겨 있습니다. Launcher는 이 값과 version 출력이 모두 맞을 때만 실행합니다. 다만 Maven dependency 전체를 검증하는 `dependency-lock.json`과 JaCoCo 0.8.12는 아직 없으므로, 현재 build는 T17·T18 전체 완료 상태가 아닙니다.

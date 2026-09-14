@@ -113,9 +113,11 @@ def _fresh_target(root: Path) -> bool:
     return False
 
 
-def _write_request(
+def write_request(
     root: Path, relative_source: str, evidence: Path, retain_key: bool
-) -> None:
+) -> tuple[str, str, Path, str]:
+    """Create the request file; returns (nonce, source sha256, event file, hmac key)."""
+
     root = _directory(root, "repository root", False)
     evidence = _directory(evidence, "evidence directory", True)
     source = _source(root, relative_source)
@@ -150,10 +152,7 @@ def _write_request(
             except OSError:
                 pass
         raise RequestError("request cannot be created") from error
-    print(nonce)
-    print(source_sha256)
-    print(event_file)
-    print(hmac_key)
+    return nonce, source_sha256, event_file, hmac_key
 
 
 def main() -> int:
@@ -165,12 +164,13 @@ def main() -> int:
     parser.add_argument("--retain-key", action="store_true")
     arguments = parser.parse_args()
     try:
-        _write_request(
+        for line in write_request(
             arguments.repository_root,
             arguments.source,
             arguments.evidence_directory,
             arguments.retain_key,
-        )
+        ):
+            print(line)
     except RequestError as error:
         print(f"junit request error: {error}", file=sys.stderr)
         return 2

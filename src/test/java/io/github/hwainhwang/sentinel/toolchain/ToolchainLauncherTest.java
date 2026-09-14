@@ -332,6 +332,22 @@ class ToolchainLauncherTest {
     }
 
     @Test
+    void typedTestCommandRejectsSelectorsThatAreNotOneClassName() throws Exception {
+        Path repository = Path.of("").toAbsolutePath().normalize();
+
+        Result shell = runLauncher(repository, "typed-test", "Foo;rm", "src/main/java/X.java", "/tmp/e");
+        Result list = runLauncher(repository, "typed-test", "Foo,Bar", "src/main/java/X.java", "/tmp/e");
+        Result usage = runLauncher(repository, "typed-test", "Foo");
+
+        assertNotEquals(0, shell.exitCode());
+        assertTrue(shell.output().contains("selector is invalid"));
+        assertNotEquals(0, list.exitCode());
+        assertTrue(list.output().contains("selector is invalid"));
+        assertNotEquals(0, usage.exitCode());
+        assertTrue(usage.output().contains("usage"));
+    }
+
+    @Test
     void pomPinsTheReleaseIdentityAndDefaultLifecyclePlugins() throws Exception {
         String pom = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
 
