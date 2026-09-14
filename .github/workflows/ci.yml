@@ -21,11 +21,17 @@ jobs:
       - name: Restore the sealed toolchain
         uses: actions/cache@v4
         with:
-          path: .toolchain
+          # The self-check attempt folders are run output, not toolchain.
+          path: |
+            .toolchain
+            !.toolchain/self-crap-runs
+            !.toolchain/self-mutation-runs
           key: java-toolchain-${{ matrix.os }}-${{ hashFiles('toolchain.lock.json', 'backend.lock.json', 'pom.xml', 'src/main/resources/pit-probe-artifacts.tsv') }}
       - name: Bootstrap the JDK, Maven, mutation backend, offline repository and PIT probe inputs
         run: |
           sentinel-tool/setup.sh
           scripts/bootstrap-pit-probe.sh
-      - name: Run the checker's tests offline
-        run: scripts/mvn.sh -o -B -ntp test
+      - name: Run the checker's tests offline under its own CRAP gate
+        run: python3 -I -B scripts/toolchain.py self-crap
+      - name: Prove the checker's own mutation slice
+        run: python3 -I -B scripts/toolchain.py self-mutation-slice
