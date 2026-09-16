@@ -169,8 +169,8 @@ def main() -> int:
     response = {key: request.get(key) for key in IDENTITY_KEYS}
     response["toolVersion"] = manifest["version"]
 
-    def finish(exit_code: int) -> int:
-        status = STATUS_BY_EXIT.get(exit_code, "backendError")
+    def finish(exit_code: int, *, no_changes: bool = False) -> int:
+        status = "noChanges" if no_changes else STATUS_BY_EXIT.get(exit_code, "backendError")
         exit_code = 6 if status == "backendError" else exit_code
         response.update(status=status, exitCode=exit_code, passed=status == "passed")
         sys.stdout.write(json.dumps(response, separators=(",", ":")) + "\n")
@@ -203,7 +203,7 @@ def main() -> int:
             # Changed mode: only changed production sources are judged; none means nothing to judge.
             targets = sorted(set(sources) & {str(path) for path in changed})
             if not targets:
-                return finish(0)
+                return finish(0, no_changes=True)
         inventory = work / "production.inventory"
         inventory.write_text("sentinel-java-production-v1\n" + "".join(f"{s}\n" for s in sources), encoding="utf-8")
         snapshot = work / "snapshot"
