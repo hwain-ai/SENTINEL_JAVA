@@ -24,7 +24,7 @@ class SpecGoldenSnapshotTest {
                 "gate/mutation-v1.json",
                 "10a72c7fc59f3ca89ba9a7c7985c17f156f4aac86f2513f585efbfb46c686dbc",
                 "gate/threshold-v1.json",
-                "188f7bdad01fb970ab06822a5eadaca5e0a208a8b88409c34300b6fa9b76a5f3");
+                "4487068539a5e34f1985e2541a1976c1bde445ce222c8617b94aa54b4664a860");
 
         for (Map.Entry<String, String> entry : expected.entrySet()) {
             assertEquals(entry.getValue(), sha256(ROOT.resolve(entry.getKey())), entry.getKey());

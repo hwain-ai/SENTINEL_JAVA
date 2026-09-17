@@ -294,7 +294,7 @@ public final class EvidenceContract {
         return result;
     }
 
-    /** At the default 100 percent this is exactly killed == inScope with every other state at zero. */
+    /** At an explicit 100 percent this is exactly killed == inScope with every other state at zero. */
     private static boolean mutationPasses(
             Map<String, Long> counts, long inScope, long unauthorized, GateThreshold mutationMin) {
         return inScope >= 1 && unauthorized == 0

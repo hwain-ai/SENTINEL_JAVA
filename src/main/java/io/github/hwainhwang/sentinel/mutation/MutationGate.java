@@ -15,7 +15,7 @@ public final class MutationGate {
         return component(records, GateThreshold.DEFAULT_MUTATION_MIN);
     }
 
-    /** At the default 100 percent this is exactly killed == inScope with every other state at zero. */
+    /** At an explicit 100 percent this is exactly killed == inScope with every other state at zero. */
     public static Map<String, Object> component(
             List<MutationRecord> records, GateThreshold mutationMin) {
         if (records == null || mutationMin == null) {

@@ -12,9 +12,9 @@ import org.junit.jupiter.api.Test;
 /** Mirrors the vendored SENTINEL_SPEC golden/gate/threshold-v1.json cases. */
 class GateThresholdTest {
     @Test
-    void defaultsAreCrapEightAndFullKillRate() {
+    void defaultsAreCrapEightAndNinetyPercentKillRate() {
         assertEquals("8", GateThreshold.DEFAULT_CRAP_MAX.text());
-        assertEquals("100", GateThreshold.DEFAULT_MUTATION_MIN.text());
+        assertEquals("90", GateThreshold.DEFAULT_MUTATION_MIN.text());
         assertEquals(BigInteger.valueOf(8), GateThreshold.DEFAULT_CRAP_MAX.numerator());
         assertEquals(BigInteger.ONE, GateThreshold.DEFAULT_CRAP_MAX.denominator());
     }
@@ -60,6 +60,9 @@ class GateThresholdTest {
 
     @Test
     void goldenMutationCasesFollowTheMinimumKillRate() {
+        assertTrue(GateThreshold.DEFAULT_MUTATION_MIN.killRatePasses(9, 10));
+        assertFalse(GateThreshold.DEFAULT_MUTATION_MIN.killRatePasses(8999, 10000));
+        assertFalse(GateThreshold.mutationMin("100").killRatePasses(9, 10));
         assertTrue(GateThreshold.mutationMin("100").killRatePasses(4, 4));
         assertFalse(GateThreshold.mutationMin("100").killRatePasses(3, 4));
         assertTrue(GateThreshold.mutationMin("75").killRatePasses(3, 4));

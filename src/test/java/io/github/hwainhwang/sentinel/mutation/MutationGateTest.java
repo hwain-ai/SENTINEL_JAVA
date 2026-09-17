@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 class MutationGateTest {
     @Test
-    void buildsTheExistingEvidenceComponentOnlyWhenEveryCandidateWasKilled() {
+    void buildsTheEvidenceComponentWithTheDefaultMinimum() {
         MutationCandidate candidate = candidate("a".repeat(64));
         Map<String, Object> component = MutationGate.component(List.of(
                 new MutationRecord(candidate, MutationState.KILLED)));
@@ -26,7 +26,7 @@ class MutationGateTest {
                 "inScope", "killed", "survived", "uncovered", "timedOut",
                 "compileError", "runtimeError", "pending", "ignored", "toolError",
                 "unauthorizedExclusion", "mutationMin", "pass"), component.keySet());
-        assertEquals("100", component.get("mutationMin"));
+        assertEquals("90", component.get("mutationMin"));
     }
 
     @Test

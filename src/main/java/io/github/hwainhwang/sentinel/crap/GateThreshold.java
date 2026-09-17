@@ -14,7 +14,7 @@ public record GateThreshold(String text, BigInteger numerator, BigInteger denomi
     private static final Pattern TEXT = Pattern.compile("^(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$");
     private static final BigInteger HUNDRED = BigInteger.valueOf(100);
     public static final GateThreshold DEFAULT_CRAP_MAX = crapMax("8");
-    public static final GateThreshold DEFAULT_MUTATION_MIN = mutationMin("100");
+    public static final GateThreshold DEFAULT_MUTATION_MIN = mutationMin("90");
 
     public GateThreshold {
         Objects.requireNonNull(text, "text");
