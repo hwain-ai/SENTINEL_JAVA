@@ -28,6 +28,18 @@ class ProjectMutationTargetsTest {
     }
 
     @Test
+    void selectedLinesKeepEveryMatchingMutationInScanOrder() {
+        MutationCandidate first = new MutationCandidate("a".repeat(64), FIRST.relativePath(), DIGEST, 4, "first", 1);
+        MutationCandidate outside = new MutationCandidate("b".repeat(64), FIRST.relativePath(), DIGEST, 8, "outside", 2);
+        MutationCandidate second = new MutationCandidate("c".repeat(64), FIRST.relativePath(), DIGEST, 4, "second", 3);
+        List<MutationCandidate> candidates = List.of(first, outside, second);
+
+        assertSame(candidates, ProjectMutationRunner.selectedCandidates(candidates, Set.of()));
+        assertEquals(List.of(first, second), ProjectMutationRunner.selectedCandidates(candidates, Set.of(4)));
+        assertEquals(List.of(), ProjectMutationRunner.selectedCandidates(candidates, Set.of(99)));
+    }
+
+    @Test
     void emptyOrUninventoriedRequestsAreRejected() {
         IllegalArgumentException empty = assertThrows(IllegalArgumentException.class,
                 () -> ProjectMutationRunner.targets(INVENTORY, Set.of()));

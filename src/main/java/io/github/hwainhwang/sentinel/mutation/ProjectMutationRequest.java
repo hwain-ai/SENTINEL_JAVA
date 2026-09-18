@@ -73,7 +73,18 @@ public record ProjectMutationRequest(
     }
 
     private static void validateSelection(Set<Integer> lines, Set<String> targets) {
-        if (lines.stream().anyMatch(line -> line < 1) || (!lines.isEmpty() && (targets == null || targets.size() != 1))) {
+        for (int line : lines) {
+            if (line < 1) {
+                throw new IllegalArgumentException("functionSelectionInvalid");
+            }
+        }
+        if (!lines.isEmpty()) {
+            requireSingleTarget(targets);
+        }
+    }
+
+    private static void requireSingleTarget(Set<String> targets) {
+        if (targets == null || targets.size() != 1) {
             throw new IllegalArgumentException("functionSelectionInvalid");
         }
     }

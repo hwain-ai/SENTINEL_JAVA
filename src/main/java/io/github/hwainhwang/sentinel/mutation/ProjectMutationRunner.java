@@ -58,13 +58,26 @@ public final class ProjectMutationRunner {
         for (ProductionSource source : targets) {
             List<MutationCandidate> candidates = scan(
                     request.projectRoot(), sources, source, backend);
-            if (!request.lines().isEmpty()) candidates = candidates.stream().filter(candidate -> request.lines().contains(candidate.line())).toList();
+            candidates = selectedCandidates(candidates, request.lines());
             if (!candidates.isEmpty()) {
                 records.addAll(runSource(
                         request, sources, source, candidates, backend, tests));
             }
         }
         return List.copyOf(records);
+    }
+
+    static List<MutationCandidate> selectedCandidates(List<MutationCandidate> candidates, Set<Integer> lines) {
+        if (lines.isEmpty()) {
+            return candidates;
+        }
+        List<MutationCandidate> selected = new ArrayList<>();
+        for (MutationCandidate candidate : candidates) {
+            if (lines.contains(candidate.line())) {
+                selected.add(candidate);
+            }
+        }
+        return List.copyOf(selected);
     }
 
     private static List<MutationCandidate> scan(

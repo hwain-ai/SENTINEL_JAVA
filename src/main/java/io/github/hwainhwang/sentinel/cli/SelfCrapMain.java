@@ -27,16 +27,13 @@ public final class SelfCrapMain {
     private record Invocation(GateThreshold crapMax, Set<String> only, Set<String> functions, String[] positional) {
         static Invocation parse(String[] arguments) {
             GateThreshold crapMax = GateThreshold.DEFAULT_CRAP_MAX;
-            Set<String> only = null;
+            Set<String> only = new TreeSet<>();
             Set<String> functions = new TreeSet<>();
             int index = 0;
             while (index + 1 < arguments.length && arguments[index].startsWith("--")) {
                 if ("--crap-max".equals(arguments[index])) {
                     crapMax = GateThreshold.crapMax(arguments[index + 1]);
                 } else if ("--only".equals(arguments[index])) {
-                    if (only == null) {
-                        only = new TreeSet<>();
-                    }
                     only.add(onlyPath(arguments[index + 1]));
                 } else if ("--function".equals(arguments[index])) {
                     functions.add(arguments[index + 1]);
@@ -47,7 +44,7 @@ public final class SelfCrapMain {
             }
             return new Invocation(
                     crapMax,
-                    only == null ? null : Set.copyOf(only),
+                    only.isEmpty() ? null : Set.copyOf(only),
                     Set.copyOf(functions),
                     Arrays.copyOfRange(arguments, index, arguments.length));
         }

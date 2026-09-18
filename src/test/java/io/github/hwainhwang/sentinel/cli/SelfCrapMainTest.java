@@ -90,6 +90,35 @@ class SelfCrapMainTest {
     }
 
     @Test
+    void selectsANamedFunctionAndRejectsAnUnknownOption() throws Exception {
+        Path sourceRoot = projectRoot.resolve("src/main/java");
+        Files.createDirectories(sourceRoot);
+        Files.writeString(sourceRoot.resolve("Sample.java"),
+                "class Sample { int value() { return 1; }\n int other() { return 2; } }",
+                StandardCharsets.UTF_8);
+        Path coverage = projectRoot.resolve("target/jacoco.xml");
+        Files.createDirectories(coverage.getParent());
+        Files.writeString(coverage, report("()I", 2, 0), StandardCharsets.UTF_8);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+        int selected = SelfCrapMain.run(new String[]{
+                    "--function", "value", "--only", "src/main/java/Sample.java",
+                    projectRoot.toString(), "src/main/java", "target/jacoco.xml"},
+                new PrintStream(output, true, StandardCharsets.UTF_8),
+                new PrintStream(error, true, StandardCharsets.UTF_8));
+        assertEquals(0, selected);
+        assertTrue(output.toString(StandardCharsets.UTF_8).contains("\"total\":1"));
+        assertEquals("", error.toString(StandardCharsets.UTF_8));
+
+        int rejected = SelfCrapMain.run(new String[]{"--unknown", "value", projectRoot.toString(),
+                    "src/main/java", "target/jacoco.xml"},
+                new PrintStream(new ByteArrayOutputStream()), new PrintStream(error, true, StandardCharsets.UTF_8));
+        assertEquals(4, rejected);
+        assertTrue(error.toString(StandardCharsets.UTF_8).contains("usage"));
+    }
+
+    @Test
     void returnsGateFailureAndIdentifiesUnknownCallable() throws Exception {
         Path sourceRoot = projectRoot.resolve("src/main/java");
         Files.createDirectories(sourceRoot);

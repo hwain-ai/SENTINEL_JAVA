@@ -20,6 +20,8 @@ CC는 기본 1에 `if`, 두 `for`, `while`, `do-while`, `catch`, ternary, non-de
 
 JaCoCo XML은 DTD와 external entity를 막고, 허용하지 않은 element 배치, 잘못된 JVM descriptor, 음수와 안전 정수 범위 밖 counter를 거부합니다. Join key는 internal class name, exact method name과 JVM descriptor이며, classfile의 첫 instruction line이 현재 callable source line 범위 안에 있어야 합니다. 가까운 줄이나 같은 이름으로 대신 연결하지 않습니다. Missing, stale 또는 duplicate method, missing/duplicate instruction counter와 total 0은 각각 명시적인 unknown입니다. Source만으로 synthetic lambda method를 증명할 수 없으므로 lambda도 unknown입니다.
 
+검사기 자체 코드에도 같은 규칙을 적용합니다. 자체 CRAP 검사 대상의 선택 필터와 결과 변환은 이름이 있는 메서드·반복문·메서드 참조로 작성합니다. 람다를 측정에서 제외하거나 가까운 메서드의 커버리지를 대신 붙이지 않습니다.
+
 ## Exact 결과
 
 CRAP numerator와 denominator는 `BigInteger`로 계산한 뒤 GCD로 줄입니다. Gate는 decimal을 만들기 전에 exact fraction을 지정한 상한(기본 8)과 비교합니다. Decimal은 12자리 round-half-to-even이며 locale formatter나 binary floating point를 사용하지 않습니다. Stable sort는 unknown-first, exact risk descending, UTF-8 path bytes, source byte offset, UTF-8 callable ID 순서입니다.

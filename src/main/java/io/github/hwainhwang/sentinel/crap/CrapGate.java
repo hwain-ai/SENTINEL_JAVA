@@ -53,7 +53,7 @@ public final class CrapGate {
         if (!functions.isEmpty()) {
             List<Models.CallableMetric> matches = new ArrayList<>();
             for (String name : functions) {
-                List<Models.CallableMetric> found = selected.stream().filter(metric -> matchesName(metric.callable(), name)).toList();
+                List<Models.CallableMetric> found = namedMetrics(selected, name);
                 if (found.size() != 1) throw new IllegalArgumentException("functionSelectionInvalid");
                 requireSeparateLines(found.get(0).callable(), selected);
                 if (!matches.contains(found.get(0))) matches.add(found.get(0));
@@ -61,6 +61,16 @@ public final class CrapGate {
             selected = List.copyOf(matches);
         }
         return result(selected);
+    }
+
+    private static List<Models.CallableMetric> namedMetrics(List<Models.CallableMetric> metrics, String name) {
+        List<Models.CallableMetric> found = new ArrayList<>();
+        for (Models.CallableMetric metric : metrics) {
+            if (matchesName(metric.callable(), name)) {
+                found.add(metric);
+            }
+        }
+        return found;
     }
 
     private static void requireSeparateLines(Models.CallableDefinition selected, List<Models.CallableMetric> metrics) {

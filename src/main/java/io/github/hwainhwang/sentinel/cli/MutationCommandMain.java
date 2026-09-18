@@ -3,6 +3,7 @@ package io.github.hwainhwang.sentinel.cli;
 import io.github.hwainhwang.sentinel.crap.GateThreshold;
 import io.github.hwainhwang.sentinel.evidence.CanonicalJson;
 import io.github.hwainhwang.sentinel.mutation.MutationRun;
+import io.github.hwainhwang.sentinel.mutation.MutationRecord;
 import io.github.hwainhwang.sentinel.mutation.ProjectMutationRequest;
 import io.github.hwainhwang.sentinel.mutation.ProjectMutationRunner;
 import java.io.PrintStream;
@@ -79,21 +80,23 @@ public final class MutationCommandMain {
 
     private static int write(MutationRun run, PrintStream output) {
         Map<String, Object> report = new java.util.TreeMap<>(run.evidenceComponent());
-        report.put("mutants", run.records().stream().map(record -> {
-            Map<String, Object> item = new java.util.TreeMap<>();
-            item.put("id", record.candidate().id());
-            item.put("file", record.candidate().relativePath());
-            item.put("line", record.candidate().line());
-            item.put("description", record.candidate().description());
-            item.put("status", record.state().wireName());
-            return item;
-        }).toList());
+        report.put("mutants", run.records().stream().map(MutationCommandMain::mutantReport).toList());
         byte[] payload = CanonicalJson.file(report);
         output.write(payload, 0, payload.length);
         if (output.checkError()) {
             throw new IllegalStateException("mutationOutputWriteFailed");
         }
         return Boolean.TRUE.equals(run.evidenceComponent().get("pass")) ? 0 : 2;
+    }
+
+    private static Map<String, Object> mutantReport(MutationRecord record) {
+        Map<String, Object> item = new java.util.TreeMap<>();
+        item.put("id", record.candidate().id());
+        item.put("file", record.candidate().relativePath());
+        item.put("line", record.candidate().line());
+        item.put("description", record.candidate().description());
+        item.put("status", record.state().wireName());
+        return item;
     }
 
     private static int failure(PrintStream error, Exception failure) {
@@ -129,8 +132,10 @@ public final class MutationCommandMain {
 
     private static List<String> testClasses(String value) {
         List<String> values = List.of(value.split(",", -1));
-        if (values.stream().anyMatch(name -> !name.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*"))) {
-            throw new IllegalArgumentException("testSelectionInvalid");
+        for (String name : values) {
+            if (!name.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*")) {
+                throw new IllegalArgumentException("testSelectionInvalid");
+            }
         }
         return values;
     }
@@ -150,10 +155,13 @@ public final class MutationCommandMain {
     }
 
     private static void putOption(Map<String, String> values, String option, String value) {
-        boolean known = OPTIONS.contains(option) || MUTATION_MIN.equals(option) || EXTRA_OPTIONS.contains(option);
-        if (!known || value.isEmpty() || values.put(option, value) != null) {
+        if (!knownOption(option) || value.isEmpty() || values.put(option, value) != null) {
             throw new IllegalArgumentException("usage");
         }
+    }
+
+    private static boolean knownOption(String option) {
+        return OPTIONS.contains(option) || MUTATION_MIN.equals(option) || EXTRA_OPTIONS.contains(option);
     }
 
     private static String changedPath(String value) {

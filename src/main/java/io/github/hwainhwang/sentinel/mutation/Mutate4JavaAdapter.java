@@ -233,7 +233,8 @@ final class Mutate4JavaAdapter implements AutoCloseable {
                     application,
                     (Object) new String[]{
                         relativeSource,
-                        "--lines", expected.stream().map(candidate -> Integer.toString(candidate.line())).distinct().collect(java.util.stream.Collectors.joining(",")),
+                        "--lines", expected.stream().map(MutationCandidate::line).map(String::valueOf)
+                                .distinct().collect(java.util.stream.Collectors.joining(",")),
                         "--max-workers", "1",
                         "--test-command", TEST_COMMAND,
                         "--verbose"

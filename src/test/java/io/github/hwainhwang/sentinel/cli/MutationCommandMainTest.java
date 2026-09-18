@@ -44,6 +44,60 @@ class MutationCommandMainTest {
         assertEquals(0, exit);
         assertTrue(output.toString(StandardCharsets.UTF_8).contains("\"inScope\":1"));
         assertTrue(output.toString(StandardCharsets.UTF_8).contains("\"pass\":true"));
+        assertTrue(output.toString(StandardCharsets.UTF_8).contains("\"file\":\"src/main/java/demo/Flag.java\""));
+        assertTrue(output.toString(StandardCharsets.UTF_8).contains("\"line\":4"));
+        assertTrue(output.toString(StandardCharsets.UTF_8).contains("\"status\":\"killed\""));
+        assertTrue(output.toString(StandardCharsets.UTF_8).contains("\"description\":\"replace true with false\""));
+    }
+
+    @Test
+    void passesSelectedLinesTestsAndUnlimitedTimeoutToTheBackend() {
+        String[] values = withOptions(
+                "--changed-file", "src/main/java/demo/Flag.java",
+                "--lines", "4,7,4",
+                "--tests", "demo.FlagTest,demo.Container$NestedTest",
+                "--mutation-min", "75");
+        values[15] = "0";
+        var seen = new java.util.concurrent.atomic.AtomicReference<io.github.hwainhwang.sentinel.mutation.ProjectMutationRequest>();
+        int exit = MutationCommandMain.run(values,
+                new PrintStream(new ByteArrayOutputStream()),
+                new PrintStream(new ByteArrayOutputStream()), request -> {
+                    seen.set(request);
+                    return new MutationRun(List.of(), MutationGate.component(List.of()));
+                });
+
+        assertEquals(2, exit);
+        assertEquals(java.util.Set.of(4, 7), seen.get().lines());
+        assertEquals(List.of("demo.FlagTest", "demo.Container$NestedTest"), seen.get().tests());
+        assertEquals(0, seen.get().timeoutMillis());
+        assertEquals("75", seen.get().mutationMin().text());
+    }
+
+    @Test
+    void rejectsInvalidLineSelectionsBeforeCallingTheBackend() {
+        List<String[]> cases = List.of(
+                withOptions("--lines", "4"),
+                withOptions("--changed-file", "src/main/java/A.java", "--lines", "0"),
+                withOptions("--changed-file", "src/main/java/A.java", "--lines", "-1"),
+                withOptions("--changed-file", "src/main/java/A.java",
+                        "--changed-file", "src/main/java/B.java", "--lines", "4"));
+        for (String[] values : cases) {
+            assertRejected(values, "functionSelectionInvalid");
+        }
+    }
+
+    @Test
+    void rejectsTestPatternsAndEmptyClassNamesBeforeCallingTheBackend() {
+        for (String value : List.of("demo.*", "demo.FlagTest,", "demo.FlagTest#method", "demo..FlagTest")) {
+            assertRejected(withOptions("--tests", value), "testSelectionInvalid");
+        }
+    }
+
+    @Test
+    void rejectsUnknownDuplicateAndEmptyOptionsBeforeCallingTheBackend() {
+        assertRejected(withOptions("--unknown", "value"), "usage");
+        assertRejected(withOptions("--project", "/tmp/duplicate"), "usage");
+        assertRejected(withOptions("--tests", ""), "usage");
     }
 
     @Test
@@ -171,5 +225,23 @@ class MutationCommandMainTest {
             "--listener", "/tmp/listener.jar",
             "--timeout-millis", "120000"
         };
+    }
+
+    private static String[] withOptions(String... extra) {
+        String[] defaults = arguments();
+        String[] values = java.util.Arrays.copyOf(defaults, defaults.length + extra.length);
+        System.arraycopy(extra, 0, values, defaults.length, extra.length);
+        return values;
+    }
+
+    private static void assertRejected(String[] values, String diagnostic) {
+        ByteArrayOutputStream error = new ByteArrayOutputStream();
+        int exit = MutationCommandMain.run(values,
+                new PrintStream(new ByteArrayOutputStream()),
+                new PrintStream(error, true, StandardCharsets.UTF_8), request -> {
+                    throw new AssertionError("backend must not run");
+                });
+        assertEquals(4, exit);
+        assertTrue(error.toString(StandardCharsets.UTF_8).contains(diagnostic));
     }
 }
