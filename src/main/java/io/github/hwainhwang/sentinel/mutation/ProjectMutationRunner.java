@@ -58,6 +58,7 @@ public final class ProjectMutationRunner {
         for (ProductionSource source : targets) {
             List<MutationCandidate> candidates = scan(
                     request.projectRoot(), sources, source, backend);
+            if (!request.lines().isEmpty()) candidates = candidates.stream().filter(candidate -> request.lines().contains(candidate.line())).toList();
             if (!candidates.isEmpty()) {
                 records.addAll(runSource(
                         request, sources, source, candidates, backend, tests));

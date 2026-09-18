@@ -24,10 +24,11 @@ import java.util.TreeSet;
  * {@code --only} restricts the judged callables to the named project-relative source paths.
  */
 public final class SelfCrapMain {
-    private record Invocation(GateThreshold crapMax, Set<String> only, String[] positional) {
+    private record Invocation(GateThreshold crapMax, Set<String> only, Set<String> functions, String[] positional) {
         static Invocation parse(String[] arguments) {
             GateThreshold crapMax = GateThreshold.DEFAULT_CRAP_MAX;
             Set<String> only = null;
+            Set<String> functions = new TreeSet<>();
             int index = 0;
             while (index + 1 < arguments.length && arguments[index].startsWith("--")) {
                 if ("--crap-max".equals(arguments[index])) {
@@ -37,6 +38,8 @@ public final class SelfCrapMain {
                         only = new TreeSet<>();
                     }
                     only.add(onlyPath(arguments[index + 1]));
+                } else if ("--function".equals(arguments[index])) {
+                    functions.add(arguments[index + 1]);
                 } else {
                     throw new IllegalArgumentException("usage");
                 }
@@ -45,6 +48,7 @@ public final class SelfCrapMain {
             return new Invocation(
                     crapMax,
                     only == null ? null : Set.copyOf(only),
+                    Set.copyOf(functions),
                     Arrays.copyOfRange(arguments, index, arguments.length));
         }
 
@@ -92,7 +96,7 @@ public final class SelfCrapMain {
                     read(coverage),
                     classpath(root, positional),
                     invocation.crapMax(),
-                    invocation.only());
+                    invocation.only(), invocation.functions());
             out.println(summary(result, invocation.crapMax()));
             printFailures(result.rows(), error, invocation.crapMax());
             return result.passed() ? 0 : 2;
@@ -180,14 +184,34 @@ public final class SelfCrapMain {
     }
 
     private static String summary(CrapGate.Result result, GateThreshold crapMax) {
-        return "{\"schemaVersion\":\"sentinel-java-self-crap-v1\",\"passed\":"
-                + result.passed()
-                + ",\"crapMax\":\"" + crapMax.text() + "\""
-                + ",\"total\":" + result.total()
-                + ",\"known\":" + result.known()
-                + ",\"unknown\":" + result.unknown()
-                + ",\"aboveLimit\":" + result.aboveLimit()
-                + "}";
+        Map<String, Object> report = new java.util.TreeMap<>();
+        report.put("schemaVersion", "sentinel-java-self-crap-v1");
+        report.put("passed", result.passed());
+        report.put("crapMax", crapMax.text());
+        report.put("total", result.total());
+        report.put("known", result.known());
+        report.put("unknown", result.unknown());
+        report.put("aboveLimit", result.aboveLimit());
+        report.put("functions", result.metrics().stream().map(SelfCrapMain::metricReport).toList());
+        return new String(io.github.hwainhwang.sentinel.evidence.CanonicalJson.file(report), java.nio.charset.StandardCharsets.UTF_8).strip();
+    }
+
+    private static Map<String, Object> metricReport(Models.CallableMetric metric) {
+        Models.CallableDefinition callable = metric.callable();
+        Map<String, Object> row = new java.util.TreeMap<>();
+        row.put("file", callable.identity().moduleRelativePath());
+        row.put("function", callable.identity().owner().replace('/', '.') + "." + callable.identity().callableName());
+        row.put("id", callable.identity().callableId());
+        row.put("line", callable.declarationLine());
+        row.put("endLine", callable.sourceEndLine());
+        row.put("complexity", callable.complexity());
+        row.put("coveredUnits", metric.coveredUnits());
+        row.put("totalUnits", metric.totalUnits());
+        row.put("coverageBasis", "jacoco-instruction");
+        row.put("score", metric.known() ? metric.crap().decimal() : null);
+        row.put("pass", metric.known() && metric.crap().passed());
+        row.put("reason", metric.known() ? (metric.crap().passed() ? "passed" : "crapThresholdExceeded") : metric.unknownReason().name());
+        return row;
     }
 
     private static void printFailures(

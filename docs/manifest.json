@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "path": "README.md",
+      "summary": "Java 검사기의 설치, Maven 실행, 검사 선택과 결과"
+    },
+    {
+      "path": "docs/architecture.md",
+      "summary": "Java 분석·커버리지·변이 실행 구조와 PIT 선택 경로"
+    },
+    {
+      "path": "docs/contributing.md",
+      "summary": "문서 색인·소스 연결표 관리, diff 검사와 push 훅 사용"
+    }
+  ],
+  "rules": [
+    {
+      "id": "checker",
+      "sources": [
+        "src/main/**",
+        "sentinel-tool/**",
+        "pom.xml"
+      ],
+      "documents": [
+        "README.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": "toolchain",
+      "sources": [
+        "scripts/toolchain.py",
+        "scripts/bootstrap*.sh",
+        "toolchain.lock.json",
+        "backend.lock.json"
+      ],
+      "documents": [
+        "README.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": "documentation-checks",
+      "sources": [
+        "scripts/docs_lint.py",
+        "scripts/verify_repository.sh",
+        ".githooks/**",
+        ".github/workflows/**",
+        "docs/manifest.json",
+        "tests/test_docs_lint.py"
+      ],
+      "documents": [
+        "docs/contributing.md"
+      ]
+    }
+  ],
+  "ignoreDocuments": []
+}

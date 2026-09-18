@@ -4,6 +4,7 @@ import io.github.hwainhwang.sentinel.crap.GateThreshold;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Set;
+import java.util.List;
 
 /** Explicit filesystem and toolchain inputs for one harness-neutral mutation run. */
 public record ProjectMutationRequest(
@@ -16,7 +17,15 @@ public record ProjectMutationRequest(
         Path listenerPath,
         long timeoutMillis,
         GateThreshold mutationMin,
-        Set<String> targets) {
+        Set<String> targets,
+        Set<Integer> lines,
+        List<String> tests) {
+    public ProjectMutationRequest(Path projectRoot, Path inventoryFile, Path backendJar,
+            Path javaHome, Path mavenHome, Path mavenRepository, Path listenerPath,
+            long timeoutMillis, GateThreshold mutationMin, Set<String> targets) {
+        this(projectRoot, inventoryFile, backendJar, javaHome, mavenHome, mavenRepository,
+                listenerPath, timeoutMillis, mutationMin, targets, Set.of(), List.of());
+    }
     /** {@code targets} names the inventory paths to mutate; {@code null} mutates all of them. */
     public ProjectMutationRequest(
             Path projectRoot,
@@ -55,8 +64,17 @@ public record ProjectMutationRequest(
         listenerPath = Objects.requireNonNull(listenerPath, "listenerPath");
         mutationMin = Objects.requireNonNull(mutationMin, "mutationMin");
         targets = targets == null ? null : Set.copyOf(targets);
-        if (timeoutMillis < 1_000L || timeoutMillis > 3_600_000L) {
+        lines = Set.copyOf(lines);
+        tests = List.copyOf(tests);
+        validateSelection(lines, targets);
+        if (timeoutMillis != 0 && (timeoutMillis < 1_000L || timeoutMillis > 3_600_000L)) {
             throw new IllegalArgumentException("mutationTimeoutInvalid");
+        }
+    }
+
+    private static void validateSelection(Set<Integer> lines, Set<String> targets) {
+        if (lines.stream().anyMatch(line -> line < 1) || (!lines.isEmpty() && (targets == null || targets.size() != 1))) {
+            throw new IllegalArgumentException("functionSelectionInvalid");
         }
     }
 }

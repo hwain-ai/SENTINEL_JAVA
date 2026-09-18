@@ -28,6 +28,7 @@ public final class MutationCommandMain {
             "--timeout-millis");
     private static final String MUTATION_MIN = "--mutation-min";
     private static final String CHANGED_FILE = "--changed-file";
+    private static final Set<String> EXTRA_OPTIONS = Set.of("--lines", "--tests");
     private static final Pattern SAFE_CODE = Pattern.compile("[a-z][A-Za-z0-9]{0,63}");
 
     private MutationCommandMain() {
@@ -77,7 +78,17 @@ public final class MutationCommandMain {
     }
 
     private static int write(MutationRun run, PrintStream output) {
-        byte[] payload = CanonicalJson.file(run.evidenceComponent());
+        Map<String, Object> report = new java.util.TreeMap<>(run.evidenceComponent());
+        report.put("mutants", run.records().stream().map(record -> {
+            Map<String, Object> item = new java.util.TreeMap<>();
+            item.put("id", record.candidate().id());
+            item.put("file", record.candidate().relativePath());
+            item.put("line", record.candidate().line());
+            item.put("description", record.candidate().description());
+            item.put("status", record.state().wireName());
+            return item;
+        }).toList());
+        byte[] payload = CanonicalJson.file(report);
         output.write(payload, 0, payload.length);
         if (output.checkError()) {
             throw new IllegalStateException("mutationOutputWriteFailed");
@@ -94,6 +105,8 @@ public final class MutationCommandMain {
         List<String> changed = new ArrayList<>();
         Map<String, String> values = pairs(arguments, changed);
         String mutationMin = values.remove(MUTATION_MIN);
+        String linesValue = values.remove("--lines");
+        String testsValue = values.remove("--tests");
         if (!values.keySet().equals(OPTIONS)) {
             throw new IllegalArgumentException("usage");
         }
@@ -109,7 +122,17 @@ public final class MutationCommandMain {
                 mutationMin == null
                         ? GateThreshold.DEFAULT_MUTATION_MIN
                         : GateThreshold.mutationMin(mutationMin),
-                changed.isEmpty() ? null : Set.copyOf(changed));
+                changed.isEmpty() ? null : Set.copyOf(changed),
+                linesValue == null ? Set.of() : java.util.Arrays.stream(linesValue.split(",")).map(Integer::parseInt).collect(java.util.stream.Collectors.toSet()),
+                testsValue == null ? List.of() : testClasses(testsValue));
+    }
+
+    private static List<String> testClasses(String value) {
+        List<String> values = List.of(value.split(",", -1));
+        if (values.stream().anyMatch(name -> !name.matches("[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)*"))) {
+            throw new IllegalArgumentException("testSelectionInvalid");
+        }
+        return values;
     }
 
     private static Map<String, String> pairs(String[] arguments, List<String> changed) {
@@ -127,7 +150,7 @@ public final class MutationCommandMain {
     }
 
     private static void putOption(Map<String, String> values, String option, String value) {
-        boolean known = OPTIONS.contains(option) || MUTATION_MIN.equals(option);
+        boolean known = OPTIONS.contains(option) || MUTATION_MIN.equals(option) || EXTRA_OPTIONS.contains(option);
         if (!known || value.isEmpty() || values.put(option, value) != null) {
             throw new IllegalArgumentException("usage");
         }
@@ -158,7 +181,7 @@ public final class MutationCommandMain {
     }
 
     private static long timeout(String value) {
-        if (value == null || !value.matches("[1-9][0-9]*")) {
+        if (value == null || !value.matches("0|[1-9][0-9]*")) {
             throw new IllegalArgumentException("usage");
         }
         try {

@@ -39,11 +39,49 @@ public final class CrapGate {
             List<Path> dependencyClasspath,
             GateThreshold crapMax,
             Set<String> onlyPaths) {
+        return evaluate(sources, coverageXml, dependencyClasspath, crapMax, onlyPaths, Set.of());
+    }
+
+    public static Result evaluate(Map<String, byte[]> sources, byte[] coverageXml,
+            List<Path> dependencyClasspath, GateThreshold crapMax, Set<String> onlyPaths,
+            Set<String> functions) {
         List<Models.CallableDefinition> definitions = JavaAnalyzer.analyzeAll(
                 sources, dependencyClasspath);
         JacocoCoverage.Report report = JacocoCoverage.parse(coverageXml);
         List<Models.CallableMetric> metrics = JacocoCoverage.measure(definitions, report, crapMax);
-        return result(onlyPaths == null ? metrics : judged(metrics, onlyPaths));
+        List<Models.CallableMetric> selected = onlyPaths == null ? metrics : judged(metrics, onlyPaths);
+        if (!functions.isEmpty()) {
+            List<Models.CallableMetric> matches = new ArrayList<>();
+            for (String name : functions) {
+                List<Models.CallableMetric> found = selected.stream().filter(metric -> matchesName(metric.callable(), name)).toList();
+                if (found.size() != 1) throw new IllegalArgumentException("functionSelectionInvalid");
+                requireSeparateLines(found.get(0).callable(), selected);
+                if (!matches.contains(found.get(0))) matches.add(found.get(0));
+            }
+            selected = List.copyOf(matches);
+        }
+        return result(selected);
+    }
+
+    private static void requireSeparateLines(Models.CallableDefinition selected, List<Models.CallableMetric> metrics) {
+        for (Models.CallableMetric metric : metrics) {
+            Models.CallableDefinition other = metric.callable();
+            if (overlapsOutside(selected, other)) throw new IllegalArgumentException("functionSelectionInvalid");
+        }
+    }
+
+    private static boolean overlapsOutside(Models.CallableDefinition selected, Models.CallableDefinition other) {
+        if (!selected.identity().moduleRelativePath().equals(other.identity().moduleRelativePath())) return false;
+        boolean contained = selected.sourceRange().startByte() <= other.sourceRange().startByte()
+                && other.sourceRange().endByte() <= selected.sourceRange().endByte();
+        return !contained && selected.declarationLine() <= other.sourceEndLine()
+                && other.declarationLine() <= selected.sourceEndLine();
+    }
+
+    private static boolean matchesName(Models.CallableDefinition callable, String name) {
+        Models.CallableIdentity identity = callable.identity();
+        return name.equals(identity.callableName()) || name.equals(identity.callableId())
+                || name.equals(identity.owner().replace('/', '.') + "." + identity.callableName());
     }
 
     private static List<Models.CallableMetric> judged(
@@ -72,7 +110,7 @@ public final class CrapGate {
         }
         int unknown = metrics.size() - known;
         boolean passed = !metrics.isEmpty() && unknown == 0 && aboveLimit == 0;
-        return new Result(metrics.size(), known, unknown, aboveLimit, passed, CrapRows.sort(rows));
+        return new Result(metrics.size(), known, unknown, aboveLimit, passed, CrapRows.sort(rows), metrics);
     }
 
     private static Models.CrapRow row(Models.CallableMetric metric) {
@@ -97,8 +135,13 @@ public final class CrapGate {
             int unknown,
             int aboveLimit,
             boolean passed,
-            List<Models.CrapRow> rows) {
+            List<Models.CrapRow> rows,
+            List<Models.CallableMetric> metrics) {
+        public Result(int total, int known, int unknown, int aboveLimit, boolean passed, List<Models.CrapRow> rows) {
+            this(total, known, unknown, aboveLimit, passed, rows, List.of());
+        }
         public Result {
+            metrics = List.copyOf(metrics);
             rows = List.copyOf(rows);
             validateCounts(total, known, unknown, aboveLimit, rows.size());
             validateVerdict(total, unknown, aboveLimit, passed);

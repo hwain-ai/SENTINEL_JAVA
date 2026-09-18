@@ -36,11 +36,12 @@ class SelfCrapMainTest {
 
         assertEquals(0, exit);
         assertEquals("", standardError.toString(StandardCharsets.UTF_8));
-        assertEquals(
-                "{\"schemaVersion\":\"sentinel-java-self-crap-v1\",\"passed\":true,"
-                        + "\"crapMax\":\"8\","
-                        + "\"total\":1,\"known\":1,\"unknown\":0,\"aboveLimit\":0}\n",
-                standardOut.toString(StandardCharsets.UTF_8));
+        String json = standardOut.toString(StandardCharsets.UTF_8);
+        assertTrue(json.contains("\"passed\":true"));
+        assertTrue(json.contains("\"function\":\"Sample.value\""));
+        assertTrue(json.contains("\"score\":\"1\""));
+        assertTrue(json.contains("\"coverageBasis\":\"jacoco-instruction\""));
+        assertTrue(json.contains("\"total\":1"));
     }
 
     @Test

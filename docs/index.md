@@ -1,22 +1,14 @@
----
-okf_version: "0.2"
----
+# 문서 안내
 
-# SENTINEL_JAVA 문서
+각 문서의 내용과 함께 확인할 코드·설정 경로입니다.
 
-SENTINEL_JAVA의 사용법과 변경 이유를 찾는 문서 시작점입니다.
+`docs/manifest.json`을 수정한 뒤 `python scripts/docs_lint.py --write-index`로 이 목록을 갱신합니다.
+코드 변경에 필요한 문서는 `python scripts/docs_lint.py --base HEAD`로 확인합니다.
+Python 명령은 환경에 맞게 Windows에서 `py -3`, Linux에서 `python3`로 바꿀 수 있습니다.
+검사는 관련 문서의 실제 변경 여부를 확인하며, 설명이 정확한지는 사람이 검토해야 합니다.
 
-## 구현 상태
-
-Native JDK compiler tree callable inventory, cyclomatic complexity, strict JaCoCo method 결합, exact CRAP 계산과 stable row ordering core, mutate4java 변이 판정 CLI가 구현되어 있습니다. CRAP 상한과 변이 최소 kill 비율은 명령 인자로 받고, 통합 SENTINEL이 부르는 어댑터(`sentinel-tool/`)가 coverage 실행부터 두 판정까지 이어서 돌립니다. history는 다음 구현 범위입니다. [사용법](../README.md)에서 명령과 한계를 확인합니다.
-
-## 설계
-
-* [CRAP core 구조](architecture.md) - source, coverage, exact math와 fail-closed 경계
-* [PIT 보고서 연결](pit-report-adapter.md) - 외부 XML 읽기, 정확한 후보 대조와 증거 요구
-* [PIT 선택 실행](pit-execution-probe.md) - 고정 버전의 후보 탐색·정상 대조·변이 재실행과 지원 제한
-
-## 운영 기록
-
-* [상용 변이 도구 후보 검토](sentinel-java-commercial-candidates.md) - Certitude·ArcMutate 등 Java 상용 확장 후보의 공식 자료 확인과 판단
-* [변경 기록](log.md) - 문서 번들의 생성과 변경 내역
+| 문서 | 내용 | 관련 코드·설정 |
+| --- | --- | --- |
+| [README.md](../README.md) | Java 검사기의 설치, Maven 실행, 검사 선택과 결과 | `backend.lock.json`, `pom.xml`, `scripts/bootstrap*.sh`, `scripts/toolchain.py`, `sentinel-tool/**`, `src/main/**`, `toolchain.lock.json` |
+| [docs/architecture.md](architecture.md) | Java 분석·커버리지·변이 실행 구조와 PIT 선택 경로 | `backend.lock.json`, `pom.xml`, `scripts/bootstrap*.sh`, `scripts/toolchain.py`, `sentinel-tool/**`, `src/main/**`, `toolchain.lock.json` |
+| [docs/contributing.md](contributing.md) | 문서 색인·소스 연결표 관리, diff 검사와 push 훅 사용 | `.githooks/**`, `.github/workflows/**`, `docs/manifest.json`, `scripts/docs_lint.py`, `scripts/verify_repository.sh`, `tests/test_docs_lint.py` |

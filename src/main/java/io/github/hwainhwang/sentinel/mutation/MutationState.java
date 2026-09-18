@@ -10,5 +10,15 @@ public enum MutationState {
     RUNTIME_ERROR,
     PENDING,
     IGNORED,
-    TOOL_ERROR
+    TOOL_ERROR;
+
+    public String wireName() {
+        return switch (this) {
+            case TIMED_OUT -> "timedOut";
+            case COMPILE_ERROR -> "compileError";
+            case RUNTIME_ERROR -> "runtimeError";
+            case TOOL_ERROR -> "toolError";
+            default -> name().toLowerCase(java.util.Locale.ROOT);
+        };
+    }
 }

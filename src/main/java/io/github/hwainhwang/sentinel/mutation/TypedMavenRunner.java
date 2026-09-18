@@ -25,6 +25,7 @@ final class TypedMavenRunner {
     private final Path listenerPath;
     private final Path eventDirectory;
     private final long maximumTimeoutMillis;
+    private final List<String> selectedTests;
 
     TypedMavenRunner(ProjectMutationRequest request, Path eventDirectory) throws IOException {
         this.javaHome = canonicalDirectory(request.javaHome(), "javaHomeInvalid");
@@ -34,6 +35,7 @@ final class TypedMavenRunner {
         this.listenerPath = canonicalListener(request.listenerPath());
         this.eventDirectory = canonicalDirectory(eventDirectory, "eventDirectoryInvalid");
         this.maximumTimeoutMillis = request.timeoutMillis();
+        this.selectedTests = request.tests();
         executable(javaHome.resolve("bin/java"), "javaExecutableInvalid");
         executable(mavenHome.resolve("bin/mvn"), "mavenExecutableInvalid");
     }
@@ -47,7 +49,13 @@ final class TypedMavenRunner {
         try (JUnitRequestWriter.Request request = JUnitRequestWriter.create(
                 projectRoot, eventDirectory, sourceSha256, cacheObserved)) {
             Process process = process(projectRoot).start();
-            boolean finished = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS);
+            boolean finished;
+            if (maximumTimeoutMillis == 0) {
+                process.waitFor();
+                finished = true;
+            } else {
+                finished = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS);
+            }
             if (!finished) {
                 terminate(process);
                 return timedOut(request);
@@ -72,6 +80,7 @@ final class TypedMavenRunner {
         argv.add("-Dmaven.repo.local=" + mavenRepository);
         argv.add("-Dmaven.test.additionalClasspath=" + listenerPath);
         argv.add("-DexcludedGroups=no-mutate");
+        if (!selectedTests.isEmpty()) argv.add("-Dtest=" + String.join(",", selectedTests));
         argv.add("test");
         ProcessBuilder builder = new ProcessBuilder(argv)
                 .directory(projectRoot.toFile())

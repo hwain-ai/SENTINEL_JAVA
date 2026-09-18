@@ -11,6 +11,7 @@ output goes to a temporary log.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,7 @@ IDENTITY_KEYS = ("protocolVersion", "requestId", "command", "moduleId", "languag
 EXCLUDED_DIRECTORIES = {".git", ".sentinel", ".toolchain", "target", "build", "out", ".sentinel-tools", ".sentinel-m2"}
 # Offline Maven repository that `scripts/mvn.sh deps` warms inside the project.
 PROJECT_REPOSITORY = ".sentinel-m2"
-MUTATION_TIMEOUT_MILLIS = "600000"
+MUTATION_TIMEOUT_MILLIS = "0"
 CLI_PACKAGE = "io.github.hwainhwang.sentinel.cli"
 
 
@@ -101,9 +102,9 @@ def environment(locks: dict, home_directory: Path) -> dict:
     }
 
 
-def run(command: list, cwd: Path, env: dict, log) -> int:
+def run(command: list, cwd: Path, env: dict, log, output=None) -> int:
     try:
-        return subprocess.run(command, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log, check=False).returncode
+        return subprocess.run(command, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=log if output is None else output, stderr=log, check=False).returncode
     except OSError:
         return 5
 
@@ -113,11 +114,12 @@ def maven_repository(locks: dict, project_root: Path) -> Path:
     return project_repository if project_repository.is_dir() else locks["repository"]
 
 
-def crap_gate(locks: dict, repository: Path, snapshot: Path, env: dict, log, crap_max, only) -> int:
+def crap_gate(locks: dict, repository: Path, snapshot: Path, env: dict, log, crap_max, only, functions=(), tests=(), output=None) -> int:
     java = str(locks["java_home"] / "bin" / "java")
     mvn = str(locks["maven_home"] / "bin" / "mvn")
     agent = f"-javaagent:{locks['agent']}=destfile=target/jacoco.exec,append=false"
-    if run([mvn, "-o", "-B", "-ntp", f"-Dmaven.repo.local={repository}", f"-DargLine={agent}", "test"], snapshot, env, log) != 0:
+    test_flags = ["-Dtest=" + ",".join(tests)] if tests else []
+    if run([mvn, "-o", "-B", "-ntp", f"-Dmaven.repo.local={repository}", f"-DargLine={agent}", *test_flags, "test"], snapshot, env, log) != 0:
         return 1
     if not (snapshot / "target" / "jacoco.exec").is_file():
         return 1
@@ -132,11 +134,13 @@ def crap_gate(locks: dict, repository: Path, snapshot: Path, env: dict, log, cra
         command += ["--crap-max", str(crap_max)]
     for path in only or ():
         command += ["--only", path]
+    for function in functions:
+        command += ["--function", function]
     command += [str(snapshot), "src/main/java", "target/sentinel-jacoco.xml", *classpath]
-    return run(command, snapshot, env, log)
+    return run(command, snapshot, env, log, output)
 
 
-def mutation_gate(locks: dict, repository: Path, project_root: Path, inventory: Path, env: dict, log, mutation_min, targets) -> int:
+def mutation_gate(locks: dict, repository: Path, project_root: Path, inventory: Path, env: dict, log, mutation_min, targets, lines=(), tests=(), output=None) -> int:
     java = str(locks["java_home"] / "bin" / "java")
     command = [java, "-cp", str(locks["classes"]), f"{CLI_PACKAGE}.MutationCommandMain",
                "--project", str(project_root), "--inventory", str(inventory),
@@ -147,7 +151,26 @@ def mutation_gate(locks: dict, repository: Path, project_root: Path, inventory: 
         command += ["--mutation-min", str(mutation_min)]
     for path in targets or ():
         command += ["--changed-file", path]
-    return run(command, project_root, env, log)
+    if lines:
+        command += ["--lines", ",".join(str(line) for line in lines)]
+    if tests:
+        command += ["--tests", ",".join(tests)]
+    return run(command, project_root, env, log, output)
+
+
+def test_classes(project_root, tests):
+    classes = []
+    for relative in tests:
+        path = project_root / relative
+        if not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(project_root.resolve()):
+            raise ValueError("testSelectionInvalid")
+        if "src/test/java/" not in relative or not relative.endswith(".java"):
+            raise ValueError("testSelectionInvalid")
+        name = relative.split("src/test/java/", 1)[1][:-5].replace("/", ".")
+        if not re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*", name):
+            raise ValueError("testSelectionInvalid")
+        classes.append(name)
+    return classes
 
 
 def combined(crap_exit: int, mutation_exit: int) -> int:
@@ -168,6 +191,8 @@ def main() -> int:
     request = json.load(sys.stdin)
     response = {key: request.get(key) for key in IDENTITY_KEYS}
     response["toolVersion"] = manifest["version"]
+    if "selection" in request:
+        response["selection"] = request["selection"]
 
     def finish(exit_code: int, *, no_changes: bool = False) -> int:
         status = "noChanges" if no_changes else STATUS_BY_EXIT.get(exit_code, "backendError")
@@ -199,6 +224,18 @@ def main() -> int:
             return finish(3)
         changed = request.get("changedFiles")
         targets = None
+        selected = request.get("selection", {})
+        functions = selected.get("functions", [])
+        if selected.get("files"):
+            targets = sorted(set(selected["files"]))
+            if not set(targets) <= set(sources):
+                return finish(3)
+        if functions and (targets is None or len(targets) != 1):
+            return finish(3)
+        try:
+            tests = test_classes(project_root, selected.get("tests", []))
+        except ValueError:
+            return finish(3)
         if changed is not None:
             # Changed mode: only changed production sources are judged; none means nothing to judge.
             targets = sorted(set(sources) & {str(path) for path in changed})
@@ -212,8 +249,29 @@ def main() -> int:
         home_directory.mkdir(mode=0o700)
         env = environment(locks, home_directory)
         with open(work / "checker.log", "wb") as log:
-            crap_exit = crap_gate(locks, repository, snapshot, env, log, gate.get("crapMax"), targets)
-            mutation_exit = mutation_gate(locks, repository, project_root, inventory, env, log, gate.get("mutationMin"), targets)
+            with open(work / "crap.json", "wb") as output:
+                crap_exit = crap_gate(locks, repository, snapshot, env, log, gate.get("crapMax"), targets, functions, tests, output)
+            if crap_exit not in (0, 2):
+                log.flush()
+                failure_log = (work / "checker.log").read_text(errors="replace")
+                if "self-crap error: functionSelectionInvalid" in failure_log:
+                    response["diagnostic"] = "functionSelectionInvalid"
+                    return finish(3)
+                return finish(combined(crap_exit, 0))
+            try:
+                crap = json.loads((work / "crap.json").read_text())
+                lines = sorted({line for item in crap["functions"] for line in range(item["line"], item["endLine"] + 1)}) if functions else []
+                with open(work / "mutation.json", "wb") as output:
+                    mutation_exit = mutation_gate(locks, repository, project_root, inventory, env, log, gate.get("mutationMin"), targets, lines, tests, output)
+                if mutation_exit in (0, 2):
+                    mutation = json.loads((work / "mutation.json").read_text())
+                    for item in mutation.get("mutants", []):
+                        owners = [row for row in crap["functions"] if row["file"] == item["file"] and row["line"] <= item["line"] <= row["endLine"]]
+                        if owners:
+                            item["function"] = min(owners, key=lambda row: row["endLine"] - row["line"])["function"]
+                    response["details"] = {"scope": {"files": sources if targets is None else targets, "functions": functions, "tests": selected.get("tests", []), "testSelection": "explicit" if tests else "maven"}, "crap": crap, "mutation": mutation}
+            except (OSError, ValueError, KeyError):
+                return finish(6)
     return finish(combined(crap_exit, mutation_exit))
 
 

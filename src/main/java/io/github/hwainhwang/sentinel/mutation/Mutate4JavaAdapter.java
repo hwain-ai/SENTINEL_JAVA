@@ -144,7 +144,7 @@ final class Mutate4JavaAdapter implements AutoCloseable {
                 source, module.relativeSource(), moduleSources, runner, collector);
         Object reporter = reporter(collector);
         String before = ProductionInventory.sha256(snapshotRoot.resolve(source.relativePath()));
-        int exitCode = backendExecution(snapshotRoot, executor, reporter, source.relativePath());
+        int exitCode = backendExecution(snapshotRoot, executor, reporter, source.relativePath(), expected);
         String after = ProductionInventory.sha256(snapshotRoot.resolve(source.relativePath()));
         requireUnchangedSource(before, after, source.sha256());
         collector.complete(exitCode);
@@ -220,7 +220,7 @@ final class Mutate4JavaAdapter implements AutoCloseable {
     }
 
     private int backendExecution(
-            Path root, Object executor, Object reporter, String relativeSource)
+            Path root, Object executor, Object reporter, String relativeSource, List<MutationCandidate> expected)
             throws Exception {
         Object processExecutor = processCommandExecutorConstructor.newInstance();
         Object coverageRunner = coverageRunnerConstructor.newInstance(processExecutor);
@@ -233,7 +233,7 @@ final class Mutate4JavaAdapter implements AutoCloseable {
                     application,
                     (Object) new String[]{
                         relativeSource,
-                        "--mutate-all",
+                        "--lines", expected.stream().map(candidate -> Integer.toString(candidate.line())).distinct().collect(java.util.stream.Collectors.joining(",")),
                         "--max-workers", "1",
                         "--test-command", TEST_COMMAND,
                         "--verbose"
@@ -658,7 +658,7 @@ final class Mutate4JavaAdapter implements AutoCloseable {
                     candidate.sourceSha256(),
                     site,
                     candidate.ordinal());
-            if (!actualId.equals(candidate.id()) || candidate.ordinal() != nextIndex + 1) {
+            if (!actualId.equals(candidate.id())) {
                 throw new IllegalStateException("mutationResultSetMismatch");
             }
         }

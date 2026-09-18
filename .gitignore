@@ -3,3 +3,14 @@ target/
 __pycache__/
 *.pyc
 .claude/
+
+# Local work records and validation artifacts
+/.claude/work-summaries/
+/.codex/work-summaries/
+/docs/log.md
+/docs/*-native-validation.md
+/docs/exec-plans/
+/docs/design-docs/
+/docs/internal/
+/private-docs-archive*/
+/validation-agent-check-*/
