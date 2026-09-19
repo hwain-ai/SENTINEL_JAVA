@@ -19,7 +19,7 @@ sentinel check --all
 
 `--tests`는 실행할 테스트 파일입니다. 여러 파일은 옵션을 반복하며, 생략하면 Maven의 기본 테스트 탐색을 사용합니다. `--changed`는 Git 변경분의 기능 코드만 선택합니다. 테스트만 바뀌었으면 기능 파일을 직접 지정해 재검사합니다.
 
-기본 검사에는 자동 실행 시간 제한이 없습니다. Ctrl+C로 중단합니다. 특정 파일·함수·테스트 검사 결과는 전체 인증이 아닙니다. 점수와 `pass`·`certified`는 [결과 해석](https://github.com/hwain-ai/SENTINEL/blob/main/docs/results.md)을 참고합니다.
+기본 검사에는 자동 실행 시간 제한이 없습니다. Ctrl+C로 중단합니다. 통합 명령에서 `exitCode`는 명령 종료 코드, `selection`은 검사 범위, `results[].status`는 품질 판정입니다. 내부 CRAP·mutation의 `pass`는 각 기준 충족 여부입니다. [JSON 조각별 결과 해석](https://github.com/hwain-ai/SENTINEL/blob/main/docs/results.md)을 참고하세요.
 
 ## 지원 범위와 제한
 
