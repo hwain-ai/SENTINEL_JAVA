@@ -9,6 +9,8 @@ Java 함수의 복잡도와 JaCoCo 실행 범위로 CRAP을 계산하고, mutate
 ```sh
 # Java 검사 도구와 프로젝트 설정 준비
 sentinel setup --language java
+# 설치된 도구의 버전과 상태 확인
+sentinel version
 # 기능 파일의 메서드를 지정한 테스트로 검사
 sentinel check --file src/main/java/example/Pricing.java --function calculateDiscount --tests src/test/java/example/PricingTest.java
 # 프로젝트 설정의 기능 코드와 테스트 전체 검사
@@ -48,4 +50,4 @@ python3 -I -B scripts/toolchain.py self-mutation-slice
 
 현재 명령은 `SelfCrapMain`(CRAP)과 `MutationCommandMain`(변이)입니다. `--crap-max`와 `--mutation-min`은 정수 또는 소수점 두 자리까지의 문자열로 받습니다. [문서 목록](docs/index.md)에서 관련 계약과 개발 안내를 찾을 수 있습니다.
 
-통합 실행기에 연결하는 어댑터 버전은 `0.1.4`이다. [sentinel-tool/version](sentinel-tool/version)과 설치한 실행기의 승인 목록을 함께 확인한다. 기존 설치의 갱신은 [통합 실행기 갱신 안내](https://github.com/hwain-ai/SENTINEL#승인된-도구-버전-갱신)를 따른다.
+통합 실행기에 연결하는 어댑터 버전은 `0.1.5`이다. [sentinel-tool/version](sentinel-tool/version)과 설치한 실행기의 승인 목록을 함께 확인한다. 기존 설치의 갱신은 [통합 실행기 갱신 안내](https://github.com/hwain-ai/SENTINEL#승인된-도구-버전-갱신)를 따른다.

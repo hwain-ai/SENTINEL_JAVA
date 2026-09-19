@@ -6,16 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class DoctorScriptTest {
+class VersionScriptTest {
     @Test
     void reportsVerifiedRuntimeCoverageAndMutationSourceProvenance() throws Exception {
-        Process process = new ProcessBuilder("./scripts/doctor.sh")
+        Process process = new ProcessBuilder("./scripts/version.sh")
                 .redirectErrorStream(true)
                 .start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 
         assertEquals(0, process.waitFor(), output);
-        assertTrue(output.contains("\"schemaVersion\":\"sentinel-java-doctor-v1\""));
+        assertTrue(output.contains("\"schemaVersion\":\"sentinel-java-version-v1\""));
         assertTrue(output.contains("\"passed\":true"));
         assertTrue(output.contains("\"java\":\"17.0.20.1+1\""));
         assertTrue(output.contains("\"maven\":\"3.9.16\""));

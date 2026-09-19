@@ -4,4 +4,4 @@
 PATH="/usr/bin:/bin:${PATH:-}"
 export PATH
 # Thin wrapper: verified-installation summary through scripts/toolchain.py.
-exec "${SENTINEL_PYTHON:-python3}" -I -B "$(dirname "$0")/toolchain.py" doctor
+exec "${SENTINEL_PYTHON:-python3}" -I -B "$(dirname "$0")/toolchain.py" version

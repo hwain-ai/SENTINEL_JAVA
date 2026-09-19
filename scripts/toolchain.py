@@ -8,11 +8,11 @@ arm64) with the host's Python 3.9+ and the standard library only.
     scripts/toolchain.py backends              JaCoCo jars and the mutate4java jar built from its locked source
     scripts/toolchain.py m2                    one online Maven run that fills the offline repository
     scripts/toolchain.py pit-probe             PIT probe jars used by the test suite
-    scripts/toolchain.py setup                 bootstrap, backends, m2, offline compile, doctor
+    scripts/toolchain.py setup                 bootstrap, backends, m2, offline compile, version
     scripts/toolchain.py mvn ARGS...           offline Maven with the checker's own repository (closed argument set)
     scripts/toolchain.py java ARGS...          the locked java executable
     scripts/toolchain.py deps PROJECT          online Maven test build that fills <PROJECT>/.sentinel-m2
-    scripts/toolchain.py doctor                JSON summary of the verified installation
+    scripts/toolchain.py version                JSON summary of the verified installation
     scripts/toolchain.py paths                 JSON with the resolved JAVA_HOME, MAVEN_HOME and repository
     scripts/toolchain.py platform              print the detected platform key
     scripts/toolchain.py describe PLATFORM     (maintenance) lock fields for another platform's JDK archive
@@ -68,7 +68,7 @@ MAVEN_FLAGS = {"-o", "--offline", "-B", "--batch-mode", "-ntp", "--no-transfer-p
 MAVEN_PHASES = {"clean", "compile", "test", "package", "verify"}
 TEST_SELECTOR = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*(,[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*)*$")
 SINGLE_SELECTOR = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*$")
-USAGE = ("usage: toolchain.py {bootstrap|backends|m2|pit-probe|setup|mvn|java|deps|doctor|paths|platform|describe"
+USAGE = ("usage: toolchain.py {bootstrap|backends|m2|pit-probe|setup|mvn|java|deps|version|paths|platform|describe"
          "|self-crap|self-mutation-slice|typed-test} ...")
 # The checker's own quality checks: the JUnit platform jars SelfCrapMain analyzes against, and the one
 # mutant the mutation slice proves (ExactCrap.decimal() replaced by null must be killed twice).
@@ -565,7 +565,7 @@ def command_deps(arguments: List[str]) -> int:
         shutil.rmtree(build, ignore_errors=True)
 
 
-def _doctor_report(installation: Installation) -> Dict[str, Any]:
+def _version_report(installation: Installation) -> Dict[str, Any]:
     """Verify every backend file against its lock and describe the installation."""
 
     document = _backend_document()
@@ -576,7 +576,7 @@ def _doctor_report(installation: Installation) -> Dict[str, Any]:
     _verify_backend_file(mutation["sourceArchive"], BACKENDS_ROOT / mutation["sourceArchive"]["fileName"])
     _verify_backend_file(mutation["runtime"], BACKENDS_ROOT / mutation["runtime"]["fileName"])
     return {
-        "schemaVersion": "sentinel-java-doctor-v1",
+        "schemaVersion": "sentinel-java-version-v1",
         "passed": True,
         "platform": installation.java["platform"],
         "java": installation.java["version"],
@@ -592,8 +592,8 @@ def _doctor_report(installation: Installation) -> Dict[str, Any]:
     }
 
 
-def command_doctor() -> int:
-    print(json.dumps(_doctor_report(Installation()), separators=(",", ":")))
+def command_version() -> int:
+    print(json.dumps(_version_report(Installation()), separators=(",", ":")))
     return 0
 
 
@@ -615,8 +615,8 @@ def command_setup() -> int:
     populate_m2(installation)
     if installation.run([str(installation.maven_binary), "-o", "-B", "-ntp", "-q", f"-Dmaven.repo.local={M2_ROOT}", "compile"]) != 0:
         raise fail("offline compile failed")
-    if command_doctor() != 0:
-        raise fail("doctor failed")
+    if command_version() != 0:
+        raise fail("version failed")
     print("sentinel-tool: java checker ready", file=sys.stderr)
     return 0
 
@@ -806,7 +806,7 @@ def command_self_mutation_slice() -> int:
     python = _shell_inert(Path(sys.executable).resolve(), "interpreter")
     installation = Installation(check_version=True)
     jars = backends(installation)
-    _doctor_report(installation)
+    _version_report(installation)
     if installation.run(_maven_offline(installation, "-q", "compile"), umask=CHILD_UMASK) != 0:
         raise fail("self mutation: offline compile failed")
     original_sha256 = _sha256_file(REPOSITORY_ROOT / SELF_SOURCE)
@@ -839,7 +839,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "m2": lambda: populate_m2(Installation()) or 0,
         "pit-probe": lambda: pit_probe() or 0,
         "setup": command_setup,
-        "doctor": command_doctor,
+        "version": command_version,
         "paths": command_paths,
         "self-crap": command_self_crap,
         "self-mutation-slice": command_self_mutation_slice,

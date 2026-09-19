@@ -3,5 +3,5 @@
 # every child a clean environment.
 PATH="/usr/bin:/bin:${PATH:-}"
 export PATH
-# First-run preparation: JDK, Maven, backends, offline repository, compile, doctor. See scripts/toolchain.py.
+# First-run preparation: JDK, Maven, backends, offline repository, compile, version. See scripts/toolchain.py.
 exec "${SENTINEL_PYTHON:-python3}" -I -B "$(dirname "$0")/../scripts/toolchain.py" setup
