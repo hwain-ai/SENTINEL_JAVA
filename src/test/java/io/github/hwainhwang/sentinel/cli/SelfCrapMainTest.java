@@ -16,6 +16,23 @@ class SelfCrapMainTest {
     Path projectRoot;
 
     @Test
+    void selectsFunctionLinesBeforeCoverageOrTestsExist() throws Exception {
+        Path sourceRoot = projectRoot.resolve("src/main/java");
+        Files.createDirectories(sourceRoot);
+        Files.writeString(sourceRoot.resolve("Sample.java"),
+                "class Sample {\n int value() { return 1; }\n int other() { return 2; }\n}\n");
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ByteArrayOutputStream errors = new ByteArrayOutputStream();
+        int exit = SelfCrapMain.run(new String[]{"--list-functions", "--function", "Sample.value",
+                projectRoot.toString(), "src/main/java"}, new PrintStream(output), new PrintStream(errors));
+        assertEquals(0, exit, errors.toString());
+        assertTrue(output.toString().contains("\"function\":\"Sample.value\""));
+        assertTrue(output.toString().contains("\"line\":2"));
+        assertTrue(!output.toString().contains("Sample.other"));
+        assertTrue(!Files.exists(projectRoot.resolve("target")));
+    }
+
+    @Test
     void readsProductionSourcesAndPrintsMachineReadablePassingSummary() throws Exception {
         Path sourceRoot = projectRoot.resolve("src/main/java");
         Files.createDirectories(sourceRoot);

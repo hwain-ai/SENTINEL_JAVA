@@ -2,16 +2,20 @@
 """SENTINEL tool-protocol adapter for the Java checker.
 
 Reads one sentinel-tool-protocol-v1 request from stdin and, from the checker
-repository named in the sibling ``home`` file, runs in order: a Maven test run
-with the locked JaCoCo agent on a disposable copy of the project, the JaCoCo XML
-report, the CRAP gate (SelfCrapMain) and the mutate4java mutation gate
-(MutationCommandMain). Exactly one response is written to stdout; every child's
-output goes to a temporary log.
+repository named in the sibling ``home`` file, runs CRAP and mutation in parallel
+by default (or sequentially when requested). CRAP runs Maven with the locked
+JaCoCo agent on a disposable copy, then evaluates its coverage report with
+SelfCrapMain. MutationCommandMain measures mutations in a separate copy.
+Exactly one response is written to stdout; every child's output goes to a
+temporary log.
 """
 
 import json
+import hashlib
 import os
 import re
+import runpy
+import signal
 import shutil
 import subprocess
 import sys
@@ -28,6 +32,7 @@ STATUS_BY_EXIT = {
     5: "dependencyError",
     6: "backendError",
     7: "evidenceError",
+    8: "cancelled",
 }
 IDENTITY_KEYS = ("protocolVersion", "requestId", "command", "moduleId", "language")
 # Same exclusions as ProjectSnapshot and ProductionInventory in the checker.
@@ -104,9 +109,18 @@ def environment(locks: dict, home_directory: Path) -> dict:
 
 def run(command: list, cwd: Path, env: dict, log, output=None) -> int:
     try:
-        return subprocess.run(command, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=log if output is None else output, stderr=log, check=False).returncode
+        process = subprocess.Popen(command, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL,
+                                   stdout=log if output is None else output, stderr=log, start_new_session=True)
     except OSError:
         return 5
+    try:
+        return process.wait()
+    finally:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
 
 
 def maven_repository(locks: dict, project_root: Path) -> Path:
@@ -142,7 +156,7 @@ def crap_gate(locks: dict, repository: Path, snapshot: Path, env: dict, log, cra
 
 def mutation_gate(locks: dict, repository: Path, project_root: Path, inventory: Path, env: dict, log, mutation_min, targets, lines=(), tests=(), output=None) -> int:
     java = str(locks["java_home"] / "bin" / "java")
-    command = [java, "-cp", str(locks["classes"]), f"{CLI_PACKAGE}.MutationCommandMain",
+    command = [java, "-Djava.io.tmpdir=" + tempfile.gettempdir(), "-cp", str(locks["classes"]), f"{CLI_PACKAGE}.MutationCommandMain",
                "--project", str(project_root), "--inventory", str(inventory),
                "--backend", str(locks["mutation_jar"]), "--java-home", str(locks["java_home"]),
                "--maven-home", str(locks["maven_home"]), "--maven-repository", str(repository),
@@ -171,6 +185,37 @@ def test_classes(project_root, tests):
             raise ValueError("testSelectionInvalid")
         classes.append(name)
     return classes
+
+
+def function_lines(locks, repository, project, targets, functions, env, work):
+    if not functions:
+        return []
+    command = [str(locks["java_home"] / "bin/java"), "-cp", str(locks["classes"]),
+               f"{CLI_PACKAGE}.SelfCrapMain", "--list-functions"]
+    for target in targets or ():
+        command += ["--only", target]
+    for function in functions:
+        command += ["--function", function]
+    command += [str(project), "src/main/java", *sorted(str(path) for path in repository.rglob("*.jar"))]
+    with open(work / "selection.json", "wb") as output, open(work / "selection.log", "wb") as log:
+        if run(command, project, env, log, output) != 0:
+            raise ValueError("functionSelectionInvalid")
+    definitions = json.loads((work / "selection.json").read_text())["functions"]
+    return sorted({line for item in definitions for line in range(item["line"], item["endLine"] + 1)})
+
+
+def protected_identity(project):
+    files = {}
+    for root, directories, names in os.walk(project):
+        directories[:] = sorted(name for name in directories if name not in EXCLUDED_DIRECTORIES)
+        for name in sorted(names):
+            path = Path(root) / name
+            files[str(path.relative_to(project))] = hashlib.sha256(path.read_bytes()).digest()
+    return files
+
+
+def run_jobs(home, first, second, mode):
+    return runpy.run_path(str(home / "scripts/parallel_jobs.py"))["run_pair"](first, second, mode)
 
 
 def combined(crap_exit: int, mutation_exit: int) -> int:
@@ -208,6 +253,10 @@ def main() -> int:
         or request.get("language") != manifest["language"]
     ):
         return finish(3)
+    execution_mode = request.get("executionMode", "parallel")
+    if execution_mode not in ("parallel", "sequential"):
+        return finish(3)
+    response["executionMode"] = execution_mode
     project_root = Path(request["projectRoot"])
     if not (project_root / "pom.xml").is_file():
         return finish(3)
@@ -243,35 +292,51 @@ def main() -> int:
                 return finish(0, no_changes=True)
         inventory = work / "production.inventory"
         inventory.write_text("sentinel-java-production-v1\n" + "".join(f"{s}\n" for s in sources), encoding="utf-8")
-        snapshot = work / "snapshot"
-        copy_project(project_root, snapshot)
         home_directory = work / "home"
         home_directory.mkdir(mode=0o700)
         env = environment(locks, home_directory)
-        with open(work / "checker.log", "wb") as log:
-            with open(work / "crap.json", "wb") as output:
-                crap_exit = crap_gate(locks, repository, snapshot, env, log, gate.get("crapMax"), targets, functions, tests, output)
-            if crap_exit not in (0, 2):
-                log.flush()
-                failure_log = (work / "checker.log").read_text(errors="replace")
-                if "self-crap error: functionSelectionInvalid" in failure_log:
-                    response["diagnostic"] = "functionSelectionInvalid"
-                    return finish(3)
-                return finish(combined(crap_exit, 0))
+        try:
+            before = protected_identity(project_root)
+            lines = function_lines(locks, repository, project_root, targets, functions, env, work)
+
+            def measure_crap():
+                with tempfile.TemporaryDirectory(prefix="crap-") as root:
+                    snapshot = Path(root) / "project"
+                    copy_project(project_root, snapshot)
+                    with open(work / "crap.log", "wb") as log, open(work / "crap.json", "wb") as output:
+                        code = crap_gate(locks, repository, snapshot, env, log, gate.get("crapMax"), targets, functions, tests, output)
+                    if code not in (0, 2):
+                        raise RuntimeError("gateExit:" + str(combined(code, 0)))
+                    return code, json.loads((work / "crap.json").read_text())
+
+            def measure_mutation():
+                with open(work / "mutation.log", "wb") as log, open(work / "mutation.json", "wb") as output:
+                    code = mutation_gate(locks, repository, project_root, inventory, env, log, gate.get("mutationMin"), targets, lines, tests, output)
+                if code not in (0, 2):
+                    raise RuntimeError("gateExit:" + str(combined(0, code)))
+                return code, json.loads((work / "mutation.json").read_text())
+
             try:
-                crap = json.loads((work / "crap.json").read_text())
-                lines = sorted({line for item in crap["functions"] for line in range(item["line"], item["endLine"] + 1)}) if functions else []
-                with open(work / "mutation.json", "wb") as output:
-                    mutation_exit = mutation_gate(locks, repository, project_root, inventory, env, log, gate.get("mutationMin"), targets, lines, tests, output)
-                if mutation_exit in (0, 2):
-                    mutation = json.loads((work / "mutation.json").read_text())
-                    for item in mutation.get("mutants", []):
-                        owners = [row for row in crap["functions"] if row["file"] == item["file"] and row["line"] <= item["line"] <= row["endLine"]]
-                        if owners:
-                            item["function"] = min(owners, key=lambda row: row["endLine"] - row["line"])["function"]
-                    response["details"] = {"scope": {"files": sources if targets is None else targets, "functions": functions, "tests": selected.get("tests", []), "testSelection": "explicit" if tests else "maven"}, "crap": crap, "mutation": mutation}
-            except (OSError, ValueError, KeyError):
-                return finish(6)
+                (crap_exit, crap), (mutation_exit, mutation) = run_jobs(home, measure_crap, measure_mutation, execution_mode)
+            finally:
+                if protected_identity(project_root) != before:
+                    raise RuntimeError("protectedSourceChanged")
+            for item in mutation.get("mutants", []):
+                owners = [row for row in crap["functions"] if row["file"] == item["file"] and row["line"] <= item["line"] <= row["endLine"]]
+                if owners:
+                    item["function"] = min(owners, key=lambda row: row["endLine"] - row["line"])["function"]
+            response["details"] = {"scope": {"files": sources if targets is None else targets, "functions": functions, "tests": selected.get("tests", []), "testSelection": "explicit" if tests else "maven"}, "crap": crap, "mutation": mutation}
+        except KeyboardInterrupt:
+            return finish(8)
+        except ValueError as error:
+            if str(error) == "functionSelectionInvalid":
+                response["diagnostic"] = "functionSelectionInvalid"
+                return finish(3)
+            return finish(6)
+        except (OSError, KeyError, RuntimeError) as error:
+            if str(error).startswith("gateExit:"):
+                return finish(int(str(error).split(":")[1]))
+            return finish(6)
     return finish(combined(crap_exit, mutation_exit))
 
 

@@ -24,8 +24,11 @@ import java.util.TreeSet;
  * {@code --only} restricts the judged callables to the named project-relative source paths.
  */
 public final class SelfCrapMain {
-    private record Invocation(GateThreshold crapMax, Set<String> only, Set<String> functions, String[] positional) {
+    private record Invocation(GateThreshold crapMax, Set<String> only, Set<String> functions, String[] positional, boolean listFunctions) {
         static Invocation parse(String[] arguments) {
+            List<String> values = new ArrayList<>(Arrays.asList(arguments));
+            boolean listFunctions = values.remove("--list-functions");
+            arguments = values.toArray(String[]::new);
             GateThreshold crapMax = GateThreshold.DEFAULT_CRAP_MAX;
             Set<String> only = new TreeSet<>();
             Set<String> functions = new TreeSet<>();
@@ -46,7 +49,7 @@ public final class SelfCrapMain {
                     crapMax,
                     only.isEmpty() ? null : Set.copyOf(only),
                     Set.copyOf(functions),
-                    Arrays.copyOfRange(arguments, index, arguments.length));
+                    Arrays.copyOfRange(arguments, index, arguments.length), listFunctions);
         }
 
         private static String onlyPath(String value) {
@@ -81,6 +84,9 @@ public final class SelfCrapMain {
         try {
             Invocation invocation = Invocation.parse(arguments);
             String[] positional = invocation.positional();
+            if (invocation.listFunctions()) {
+                return describeFunctions(invocation, out);
+            }
             if (positional.length < 3) {
                 error.println("self-crap error: usage");
                 return 4;
@@ -162,8 +168,25 @@ public final class SelfCrapMain {
     }
 
     private static List<Path> classpath(Path root, String[] arguments) {
+        return classpath(root, arguments, 3);
+    }
+
+    private static int describeFunctions(Invocation invocation, PrintStream out) throws IOException {
+        String[] positional = invocation.positional();
+        if (positional.length < 2) throw new IllegalArgumentException("usage");
+        Path root = projectRoot(positional[0]);
+        var definitions = io.github.hwainhwang.sentinel.crap.JavaAnalyzer.analyzeAll(
+                sources(root, child(root, positional[1], true)), classpath(root, positional, 2));
+        var selected = CrapGate.selectDefinitions(definitions, invocation.only(), invocation.functions());
+        var report = Map.of("functions", selected.stream().map(SelfCrapMain::callableReport).toList());
+        out.println(new String(io.github.hwainhwang.sentinel.evidence.CanonicalJson.file(report),
+                java.nio.charset.StandardCharsets.UTF_8).strip());
+        return 0;
+    }
+
+    private static List<Path> classpath(Path root, String[] arguments, int start) {
         List<Path> paths = new ArrayList<>();
-        for (int index = 3; index < arguments.length; index++) {
+        for (int index = start; index < arguments.length; index++) {
             Path entry = Path.of(arguments[index]);
             if (!entry.normalize().equals(entry)) {
                 throw new IllegalArgumentException("dependencyClasspathInvalid");
@@ -195,12 +218,7 @@ public final class SelfCrapMain {
 
     private static Map<String, Object> metricReport(Models.CallableMetric metric) {
         Models.CallableDefinition callable = metric.callable();
-        Map<String, Object> row = new java.util.TreeMap<>();
-        row.put("file", callable.identity().moduleRelativePath());
-        row.put("function", callable.identity().owner().replace('/', '.') + "." + callable.identity().callableName());
-        row.put("id", callable.identity().callableId());
-        row.put("line", callable.declarationLine());
-        row.put("endLine", callable.sourceEndLine());
+        Map<String, Object> row = callableReport(callable);
         row.put("complexity", callable.complexity());
         row.put("coveredUnits", metric.coveredUnits());
         row.put("totalUnits", metric.totalUnits());
@@ -208,6 +226,16 @@ public final class SelfCrapMain {
         row.put("score", metric.known() ? metric.crap().decimal() : null);
         row.put("pass", metric.known() && metric.crap().passed());
         row.put("reason", metric.known() ? (metric.crap().passed() ? "passed" : "crapThresholdExceeded") : metric.unknownReason().name());
+        return row;
+    }
+
+    private static Map<String, Object> callableReport(Models.CallableDefinition callable) {
+        Map<String, Object> row = new java.util.TreeMap<>();
+        row.put("file", callable.identity().moduleRelativePath());
+        row.put("function", callable.identity().owner().replace('/', '.') + "." + callable.identity().callableName());
+        row.put("id", callable.identity().callableId());
+        row.put("line", callable.declarationLine());
+        row.put("endLine", callable.sourceEndLine());
         return row;
     }
 

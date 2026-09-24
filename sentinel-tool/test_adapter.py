@@ -50,6 +50,7 @@ class AdapterChangedScopeTests(unittest.TestCase):
         }
         self.crap = Mock(side_effect=self.emit_crap, return_value=0)
         self.mutation = Mock(side_effect=self.emit_mutation, return_value=0)
+        self.jobs = Mock(side_effect=lambda home, first, second, mode: (first(), second()))
 
     def emit_crap(self, *arguments):
         arguments[-1].write(json.dumps(self.crap_report).encode("utf-8"))
@@ -62,11 +63,13 @@ class AdapterChangedScopeTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def check(self, changed, selection=None):
+    def check(self, changed, selection=None, execution_mode="sequential"):
         request = {
             "protocolVersion": "sentinel-tool-protocol-v1", "requestId": "adapter-test", "command": "check",
             "moduleId": "module", "language": "java", "projectRoot": str(self.project), "config": None,
         }
+        if execution_mode is not None:
+            request["executionMode"] = execution_mode
         if changed is not None:
             request["changedFiles"] = changed
         if selection is not None:
@@ -77,6 +80,8 @@ class AdapterChangedScopeTests(unittest.TestCase):
             "load_locks": lambda home: {"java_home": self.base, "maven_home": self.base},
             "maven_repository": lambda locks, project: self.base,
             "crap_gate": self.crap, "mutation_gate": self.mutation,
+            "run_jobs": self.jobs,
+            "function_lines": lambda *args: [2] if args[4] else [],
         }
         with patch.dict(self.main.__globals__, overrides), patch("sys.stdin", io.StringIO(json.dumps(request))):
             with contextlib.redirect_stdout(output):
@@ -84,6 +89,27 @@ class AdapterChangedScopeTests(unittest.TestCase):
         response = json.loads(output.getvalue())
         self.assertEqual(response["exitCode"], exit_code)
         return exit_code, response
+
+    def test_default_and_explicit_modes_reach_the_supervisor(self):
+        for requested, expected in ((None, "parallel"), ("parallel", "parallel"), ("sequential", "sequential")):
+            with self.subTest(requested=requested):
+                self.jobs.reset_mock()
+                code, response = self.check(None, execution_mode=requested)
+                self.assertEqual(code, 0)
+                self.assertEqual(response["executionMode"], expected)
+                self.assertEqual(self.jobs.call_args.args[3], expected)
+
+    def test_invalid_mode_runs_no_measurement(self):
+        code, response = self.check(None, execution_mode="automatic")
+        self.assertEqual((code, response["status"]), (3, "usageConfigError"))
+        self.jobs.assert_not_called()
+
+    def test_project_error_still_acknowledges_execution_mode(self):
+        (self.project / "pom.xml").unlink()
+        code, response = self.check(None)
+        self.assertEqual((code, response["status"]), (3, "usageConfigError"))
+        self.assertEqual(response["executionMode"], "sequential")
+        self.jobs.assert_not_called()
 
     def test_nonproduction_changes_do_not_run_or_pass_quality_gates(self):
         exit_code, response = self.check(["README.md"])

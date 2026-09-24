@@ -25,7 +25,9 @@ sentinel check --all
 
 ## 지원 범위와 제한
 
-프로젝트의 Maven 의존성은 검사기의 잠긴 `.toolchain/m2`에서 오프라인으로 해석합니다. 이 저장소에 없는 의존성을 쓰는 프로젝트는 검사할 수 없습니다.
+프로젝트의 Maven 의존성은 `sentinel setup --language java --java-dependencies`로 `.sentinel-m2`에 먼저 준비합니다. 두 검사는 이 저장소를 참조하며 패키지를 각 사본에 복사하지 않습니다. 프로젝트 저장소가 없으면 검사기의 `.toolchain/m2`를 사용합니다. 검사 중에는 오프라인으로 실행하므로 필요한 패키지가 없으면 실패합니다.
+
+통합 `check`의 기본값은 CRAP·mutation 병렬 실행입니다. `--execution-mode sequential`로 순차 실행합니다. 함수 선택은 소스 분석으로 검사 전에 끝내므로 mutation이 CRAP 결과를 기다리지 않습니다. 각 작업은 별도 프로세스·임시 폴더·로그를 사용하며, CRAP 사본은 CRAP 측정이 끝나면 삭제합니다. 실행 오류나 취소가 발생하면 다른 작업도 중단·정리하고, 점수 미달이면 두 결과를 함께 보고합니다.
 
 분석기는 annotation processor를 끄고 소스 분석만 합니다. JaCoCo의 클래스·메서드·JVM 서명이 모두 같은 실행 범위만 연결하며, 누락·중복·확인할 수 없는 lambda는 미측정으로 표시합니다. CRAP 기본 상한은 8, mutation 최소 탐지율은 90%입니다.
 

@@ -1,5 +1,9 @@
 # Java CRAP core 구조
 
+통합 어댑터는 CRAP과 mutation을 기본으로 병렬 실행한다. 요청의 `executionMode`가 `sequential`이면 순차 실행한다. `SelfCrapMain --list-functions`가 커버리지 없이 함수 위치를 구하고, 두 측정은 같은 선택 결과로 시작한다. Mutation은 CRAP 결과를 기다리지 않는다. 함수 이름·같은 행의 중첩 판단은 `CrapGate.selectDefinitions`를 두 경로가 함께 사용한다.
+
+두 측정은 감독 프로세스가 관리하는 별도 프로세스에서 실행되며, 각각 결과 JSON과 로그를 쓴다. 실행 오류·취소 시 형제 작업을 중단하고 자식 프로세스를 회수한 뒤 임시 폴더를 정리한다. 프로젝트의 `.sentinel-m2`는 복사하지 않고 함께 참조하며, 검사 전후 원본 파일 지문이 다르면 결과를 거부한다.
+
 ## 한눈에 보기
 
 `JavaAnalyzer`가 source callable과 CC를 만들고, `JacocoCoverage`가 정확히 일치하는 instruction coverage만 붙입니다. `ExactCrap`과 `CanonicalDecimal`은 그 결과를 정수 연산으로 계산하며, `CrapRows`가 모든 runtime이 공유하는 순서로 정렬합니다.
