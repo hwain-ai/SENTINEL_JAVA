@@ -83,30 +83,31 @@ public final class SelfCrapMain {
         }
         try {
             Invocation invocation = Invocation.parse(arguments);
-            String[] positional = invocation.positional();
             if (invocation.listFunctions()) {
                 return describeFunctions(invocation, out);
             }
-            if (positional.length < 3) {
-                error.println("self-crap error: usage");
-                return 4;
-            }
-            Path root = projectRoot(positional[0]);
-            Path sourceRoot = child(root, positional[1], true);
-            Path coverage = child(root, positional[2], false);
-            CrapGate.Result result = CrapGate.evaluate(
-                    sources(root, sourceRoot),
-                    read(coverage),
-                    classpath(root, positional),
-                    invocation.crapMax(),
-                    invocation.only(), invocation.functions());
-            out.println(summary(result, invocation.crapMax()));
-            printFailures(result.rows(), error, invocation.crapMax());
-            return result.passed() ? 0 : 2;
+            return measure(invocation, out, error);
         } catch (IOException | RuntimeException failure) {
             error.println("self-crap error: " + safeMessage(failure));
             return 4;
         }
+    }
+
+    private static int measure(Invocation invocation, PrintStream out, PrintStream error) throws IOException {
+        String[] positional = invocation.positional();
+        if (positional.length < 3) {
+            error.println("self-crap error: usage");
+            return 4;
+        }
+        Path root = projectRoot(positional[0]);
+        Path sourceRoot = child(root, positional[1], true);
+        Path coverage = child(root, positional[2], false);
+        CrapGate.Result result = CrapGate.evaluate(
+                sources(root, sourceRoot), read(coverage), classpath(root, positional),
+                invocation.crapMax(), invocation.only(), invocation.functions());
+        out.println(summary(result, invocation.crapMax()));
+        printFailures(result.rows(), error, invocation.crapMax());
+        return result.passed() ? 0 : 2;
     }
 
     private static Path projectRoot(String value) {

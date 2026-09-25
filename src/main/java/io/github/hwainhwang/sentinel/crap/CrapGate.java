@@ -60,20 +60,36 @@ public final class CrapGate {
     /** Select source ranges before either measurement starts; no coverage is needed. */
     public static List<Models.CallableDefinition> selectDefinitions(
             List<Models.CallableDefinition> definitions, Set<String> onlyPaths, Set<String> functions) {
-        List<Models.CallableDefinition> available = definitions.stream()
-                .filter(value -> onlyPaths == null || onlyPaths.contains(value.identity().moduleRelativePath()))
-                .toList();
+        List<Models.CallableDefinition> available = selectPaths(definitions, onlyPaths);
         if (functions.isEmpty()) return available;
         List<Models.CallableDefinition> selected = new ArrayList<>();
         for (String name : functions) {
-            List<Models.CallableDefinition> found = available.stream()
-                    .filter(value -> matchesName(value, name)).toList();
+            List<Models.CallableDefinition> found = namedDefinitions(available, name);
             if (found.size() != 1) throw new IllegalArgumentException("functionSelectionInvalid");
             Models.CallableDefinition value = found.get(0);
             for (Models.CallableDefinition other : available) {
                 if (overlapsOutside(value, other)) throw new IllegalArgumentException("functionSelectionInvalid");
             }
             if (!selected.contains(value)) selected.add(value);
+        }
+        return List.copyOf(selected);
+    }
+
+    private static List<Models.CallableDefinition> selectPaths(
+            List<Models.CallableDefinition> definitions, Set<String> onlyPaths) {
+        if (onlyPaths == null) return definitions;
+        List<Models.CallableDefinition> selected = new ArrayList<>();
+        for (Models.CallableDefinition definition : definitions) {
+            if (onlyPaths.contains(definition.identity().moduleRelativePath())) selected.add(definition);
+        }
+        return List.copyOf(selected);
+    }
+
+    private static List<Models.CallableDefinition> namedDefinitions(
+            List<Models.CallableDefinition> definitions, String name) {
+        List<Models.CallableDefinition> selected = new ArrayList<>();
+        for (Models.CallableDefinition definition : definitions) {
+            if (matchesName(definition, name)) selected.add(definition);
         }
         return List.copyOf(selected);
     }

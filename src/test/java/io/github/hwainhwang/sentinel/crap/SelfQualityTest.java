@@ -1,6 +1,7 @@
 package io.github.hwainhwang.sentinel.crap;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -13,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 class SelfQualityTest {
     @Test
-    void everyProductionCallableHasComplexityAtMostEight() throws IOException {
+    void everyProductionCallableIsMeasurableAndHasComplexityAtMostEight() throws IOException {
         Path root = Path.of("").toAbsolutePath().normalize();
         Path sourceRoot = root.resolve("src/main/java");
         Map<String, byte[]> sources = new LinkedHashMap<>();
@@ -35,6 +36,11 @@ class SelfQualityTest {
                                 + "opentest4j-1.3.0.jar")));
 
         assertFalse(definitions.isEmpty());
+        for (Models.CallableDefinition definition : definitions) {
+            String location = definition.identity().moduleRelativePath() + ":" + definition.declarationLine();
+            assertNotNull(definition.jacocoClassName(), "coverage class mapping missing: " + location);
+            assertNotNull(definition.jacocoMethodName(), "coverage method mapping missing: " + location);
+        }
         assertTrue(
                 definitions.stream().allMatch(item -> item.complexity() <= 8),
                 () -> definitions.stream()

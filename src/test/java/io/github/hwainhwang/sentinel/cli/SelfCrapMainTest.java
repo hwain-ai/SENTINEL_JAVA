@@ -12,6 +12,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class SelfCrapMainTest {
+    @Test
+    void rejectsIncompleteMeasurementAndListingRequests() {
+        for (String[] arguments : new String[][]{
+                {}, {"--list-functions"}, {"--list-functions", projectRoot.toString()},
+                {projectRoot.toString(), "src/main/java"}}) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            ByteArrayOutputStream error = new ByteArrayOutputStream();
+            int exit = SelfCrapMain.run(arguments, new PrintStream(output), new PrintStream(error));
+            assertEquals(4, exit);
+            assertEquals("", output.toString(StandardCharsets.UTF_8));
+            assertTrue(error.toString(StandardCharsets.UTF_8).contains("self-crap error: usage"));
+        }
+    }
+
     @TempDir
     Path projectRoot;
 

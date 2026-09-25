@@ -50,6 +50,8 @@ python3 -I -B scripts/toolchain.py self-crap
 python3 -I -B scripts/toolchain.py self-mutation-slice
 ```
 
+CI는 일반 테스트에 이어 `self-crap`과 `self-mutation-slice`를 실행합니다. 일반 테스트 통과만으로 CI 검증이 끝난 것은 아닙니다. `SelfQualityTest`는 복잡도와 함께 모든 측정 대상 함수가 커버리지에 연결될 수 있는지도 확인합니다.
+
 현재 명령은 `SelfCrapMain`(CRAP)과 `MutationCommandMain`(변이)입니다. `--crap-max`와 `--mutation-min`은 정수 또는 소수점 두 자리까지의 문자열로 받습니다. [문서 목록](docs/index.md)에서 관련 계약과 개발 안내를 찾을 수 있습니다.
 
-통합 실행기에 연결하는 어댑터 버전은 `0.1.5`이다. [sentinel-tool/version](sentinel-tool/version)과 설치한 실행기의 승인 목록을 함께 확인한다. 기존 설치의 갱신은 [통합 실행기 갱신 안내](https://github.com/hwain-ai/SENTINEL#승인된-도구-버전-갱신)를 따른다.
+통합 실행기에 연결하는 어댑터 버전은 `0.1.6`이다. [sentinel-tool/version](sentinel-tool/version)과 설치한 실행기의 승인 목록을 함께 확인한다. 기존 설치의 갱신은 [통합 실행기 갱신 안내](https://github.com/hwain-ai/SENTINEL#승인된-도구-버전-갱신)를 따른다. 이 버전은 기본 병렬 실행과 `--execution-mode sequential` 선택을 지원한다.
